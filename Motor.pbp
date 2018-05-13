@@ -1,0 +1,810 @@
+'****************************************************************
+'*  Name    : MOTOR1.BAS                                        *
+'*  Author  : Juan Manuel Corino                                *
+'*  Notice  : Copyright (c) 2007 Juan Manuel Corino             *
+'*          : All Rights Reserved                               *
+'*  Date    : 01/05/2013                                        *
+'*  Version : 1.0                                               *
+'*  Notes   : 16F887 @ 20Mhz                                   *
+'*          :                                                   *
+'****************************************************************
+
+'##################################################################
+'Grabado Valores Iniciales en EEprom - Tabla db y parametros DSP
+'Data @0,    0,0,0,0,0,0,0,0,0,0,0,1,2,3,3,4
+
+'Posicion 0-1 RESERVADA minEncoder
+'Posicion 2-3 RESERVADA maxEncoder
+        
+'###################################################################
+
+INCLUDE "modedefs.bas"
+Define LOADER_USED	1
+DEFINE OSC 20           	'20Mhz Oscillator was used
+'DEFINE HSER_CLROERR 1       'Hser clear overflow automatically
+DEFINE SHIFT_PAUSEUS 10 
+
+'CMCON = 7
+ansel = 0
+anselh = 0
+IOCB = 0
+
+rcsta = $90                 'Enable Asynchronous Serial Receive
+txsta = $24                 'Enable Asynchronous Serial Transmit
+'ICD---------------------
+spbrg = 64                  '19.2 KBaud @ 20Mhz
+'--------------------------
+'spbrg = 25                  '19.2 KBaud @ 8Mhz
+'option_reg = $87			'Set timer0 in TimerMode and prescaler 1:128
+t1con = $25                 'Set Timer1 in TimerMode Prescaler 1:4
+intcon.0 = 0
+intcon.1 = 0
+intcon.3 = 0
+intcon.4 = 0
+'intcon = 0
+
+'intcon2.7 = 1              '18F4520
+OPTION_REG.7 = 1            '16F887
+
+TRISA.1 = 0                 'PIN 2 - Salida Seleccion LOW/HIGH Byte Encoder.
+TRISA.0 = 0                 'PIN 3 - Salida Leer datos Encoder.
+
+TRISA.2 = 1                 'PIN 4 - Entrada general 1.
+TRISA.3 = 1                 'PIN 5 - Entrada general 2.
+TRISA.4 = 1                 'PIN 6 - Entrada general 3.
+
+TRISA.5 = 0                 'PIN 7 - Salida general 1.
+TRISE.0 = 0                 'PIN 8 - Salida general 2.
+TRISE.1 = 0                 'PIN 9 - Salida general 3. 
+
+'TRISB.0 = 0                 'PIN 33 - Salida Boton Subir.
+'TRISB.1 = 0                 'PIN 34 - Salida Boton Bajar.
+'TRISB.2 = 0                 'PIN 35 - Salida Selector vel 1.
+'TRISB.3 = 0                 'PIN 36 - Salida Selector vel 2.
+'TRISB.4 = 0                 'PIN 37 - Salida Selector vel 3.
+portb = 0
+trisb = 0
+
+TRISC.1 = 0                 'PIN 16 - Salida control TX RS485.
+
+TRISC.2 = 0                 'PIN 17 - Salida Control Escritura EEPROM.
+TRISC.3 = 0                 'PIN 18 - Salida SCK.
+'TRISC.4 = 1                 'PIN 23 - Salida SDI.
+
+TRISD.0 = 1                 'PIN 19 - Entrada encoder 0.
+TRISD.1 = 1                 'PIN 20 - Entrada encoder 1.
+TRISD.2 = 1                 'PIN 21 - Entrada encoder 2.
+TRISD.3 = 1                 'PIN 22 - Entrada encoder 3.
+TRISD.4 = 1                 'PIN 27 - Entrada encoder 4.
+TRISD.5 = 1                 'PIN 28 - Entrada encoder 5.
+TRISD.6 = 1                 'PIN 29 - Entrada encoder 6.
+TRISD.7 = 1                 'PIN 30 - Entrada encoder 7.
+
+
+
+
+'#################################################################
+'Subir               VAR PORTB.0
+'Bajar               VAR PORTB.1
+
+DPIN                VAR PORTC.4         'I2C data pin
+CPIN                VAR PORTC.3         'I2C clock pin
+PORTC.2 = 0                             'TIENE QUE ESTAR EN 0 PARA QUE FUNCIONEN LAS MEMORIAS
+
+txEnable            var PORTC.1         'Control TX RS485.
+
+'Mx                  VAR PORTC.4         'Entrada Control Flujo
+'botPause            var PORTD.2
+'botStopEjecut       var PORTD.3
+'Conf                var PORTC.5        'Salida Control Flujo 
+'#################################################################
+
+NroMotor            CON 1
+NroMen              CON %10100000
+
+StatusByte          VAR BYTE
+RutinaStatus        VAR BYTE
+NroRutina           VAR BYTE
+NroCue              VAR BYTE
+
+Grabando            VAR rutinastatus.0
+Reproduciendo       VAR rutinastatus.1
+Automatic           VAR rutinastatus.2
+'inPause             VAR rutinastatus.3
+Cue                 VAR rutinastatus.4
+
+ErrorEnc			VAR	StatusByte.0       '1=Normal 0=Error Encoder
+tmpSubir            VAR StatusByte.1
+tmpBajar            VAR StatusByte.2
+Emergencia          VAR StatusByte.3
+LimSupSup           VAR StatusByte.4
+LimInfSup           VAR StatusByte.5
+'RESERVADO PARA INFORMAR LIMITES    var statusbyte.7
+
+oldtmpSubir         var byte
+oldtmpBajar         var byte
+oldSubir            var byte
+oldBajar            var byte
+LiberaPause         var bit
+
+temp                VAR BYTE
+tempRC              var byte
+tempW				VAR	WORD
+
+Deep                VAR BYTE
+Ac_Seg              VAR BYTE
+timeout             VAR BYTE
+TXBYTE              VAR BYTE
+Encoder             VAR WORD
+Ac_MS               VAR BYTE
+
+targetEncoder       VAR WORD
+Ultimo              VAR BIT
+Mayor               VAR BIT
+
+CRC2				VAR	BYTE
+CRC					VAR	WORD
+
+Sentido             VAR BYTE
+Vel                 VAR BYTE
+
+maxEncoder          VAR WORD
+minEncoder          VAR WORD
+
+SendRutina          VAR BIT
+
+InfLimit            var bit
+WaitRec             var bit 'Para avisar que se levanto la pausa en grabacion
+PlayReverse         var bit '0=reproduccion Normal, 1=Reverse
+antTargetEncoder    var word
+Pkt                 VAR BYTE[9]
+tmpArray            VAR BYTE[8]
+
+'#################################################################
+
+Start:              'Inicio. LLamarla implica Soft-Reset
+
+    Clear           'Inicializar todas las variables a cero
+    portb = 0
+    txEnable = 0
+    
+    pir1.0 = 0      'Cargo Timer
+    TMR1L = 243
+    TMR1H = 11
+'#################################################################
+
+portb.4 = 1
+pause 500
+portb.4 = 0
+
+read 0, temp
+minEncoder.lowBYTE = temp
+read 1, temp
+minEncoder.HIGHBYTE = temp
+
+read 2, temp
+maxEncoder.lowBYTE = temp
+read 3, temp
+maxEncoder.HIGHBYTE = temp
+          
+'Encoder = 32000
+
+'ICD---------------------
+txsta.5 = 0   			'Me aseguro de que este apagado transmisor
+'------------------------
+
+
+
+'trisc.6 = 1
+  
+Loopp:
+
+    
+    IF Reproduciendo = 1 Then 
+        'gosub Reproducir
+    endif
+    
+    IF pir1.0 = 1 Then 
+        pir1.0 = 0
+        TMR1L = 243
+        TMR1H = 11
+        GoSub subEncoder
+        'GoSub INMEDIATE_TX
+        GoSub Timer_Sub
+    EndIF
+    
+    'GoSub INMEDIATE_TX
+    
+    GoSub CheckRX
+    
+    'if SendRutina = 1 then
+    '    gosub INMEDIATE_TX
+    'endif
+    
+'##########################################
+'Esto permite tener una entrada de stop
+'por el momento lo dejo anulado para debug
+'##########################################   
+'    if porta.3 = 0 then
+'        tmpSubir = 0
+'        tmpBajar = 0
+'        PORTB.1 = 0
+'        PORTB.0 = 0 
+'        timeout = 0
+'        automatic = 0
+'        Reproduciendo = 0
+'    endif
+'##########################################
+    
+    
+    GoTo Loopp
+    
+Timer_Sub:
+    
+    IF timeout >= 4 Then   '200ms
+        tmpbajar = 0
+        tmpsubir = 0
+        timeout = 0
+        automatic = 0	'########################
+    Else
+        timeout = timeout + 1
+    EndIF 
+    
+    IF Automatic = 1 Then
+        GoSub GoAutomatic
+    EndIF
+    
+    Ac_MS = Ac_MS + 1
+    
+    IF Ac_MS.0 = 1 Then        'Entro cada 100ms
+    
+        gosub CheckLimits
+        
+        if tmpbajar = 1 then
+            sentido = 0
+        else
+            if tmpsubir = 1 then
+                sentido = 1
+            else
+                sentido = 2
+            endif
+        endif
+        
+    EndIF
+   
+    if Ac_Seg >= 20 then    'Entro cada 1 Segundo
+        Ac_Seg = 0
+        inflimit = 1
+    else
+        Ac_Seg = Ac_Seg +1
+    endif
+    
+    Return
+    
+INMEDIATE_TX:
+         'return  'ICD
+'        IF Mx = 0 then  return   'Para que transmita solo cuando el Master le asigna un slot de tiempo
+        
+        cRC = 0
+        txenable = 1
+		txsta.5 = 1   		        'Activar transmisor
+		
+    '#######################################################################
+		if SendRutina = 1 then 'Si estoy en modo transmitir rutina #NroRutina
+		
+		return '###############PARA ANULAR ESTA RUTINA QUE NO SE SI SEGUIRA EXISTIENDO
+		
+            TXBYTE = "$"            'Envio de encabezado    Byte 1
+            GoSub TX
+                    
+            TXBYTE = "R"            'Envio de encabezado    Byte 2
+            GoSub TX
+          
+            TXBYTE = "r"            'Envio de encabezado    Byte 3
+            GoSub TX
+            
+            PORTB.0 = 0
+            PORTB.1 = 0
+            tmpSubir = 0
+            tmpBajar = 0
+            timeout = 0
+            'nrorutina = Pkt[2]      'Cargo nro de rutina a reproducir
+            
+            Return
+            
+        endif
+    '###########################################################################
+		
+		
+        TXBYTE = "$"            'Envio de encabezado    Byte 1
+        GoSub TX
+                    
+        TXBYTE = "R"            'Envio de encabezado    Byte 2
+        GoSub TX
+          
+        TXBYTE = "$"            'Envio de encabezado    Byte 3
+        GoSub TX
+        
+        if inflimit = 1 then          'Campo 1
+            TXBYTE = 255
+            CRC = CRC ^ 255
+            GoSub TX 
+        else
+            TXBYTE = statusbyte             
+            CRC = CRC ^ statusbyte
+            GoSub TX        
+        endif
+        
+        if inflimit = 1 then          'Campo 2
+            TXBYTE = maxencoder.highbyte   
+            CRC = CRC ^ maxencoder.highbyte
+            GoSub TX   
+        else
+'            rutinastatus.3 = botPause 'Boton pausa por Hard  
+            TXBYTE = rutinastatus   
+            CRC = CRC ^ rutinastatus
+            GoSub TX        
+        endif
+        
+        if inflimit = 1 then            'Campo 3    
+            TXBYTE = maxencoder.lowbyte      
+       	    CRC = CRC ^ maxencoder.lowbyte
+       	    GoSub TX
+        else
+            TXBYTE = nrorutina      
+       	    CRC = CRC ^ nrorutina
+       	    GoSub TX
+        endif
+                
+        TXBYTE = nrocue                 'Campo 4
+        CRC = CRC ^ nrocue          
+        GoSub TX
+        
+        if inflimit = 1 then
+            TXBYTE = minEncoder.highbyte
+            gosub TX
+            
+            TXBYTE = minEncoder.lowbyte
+            gosub TX
+            
+            CRC = CRC ^ minencoder
+        else
+            TXBYTE = Encoder.highbyte   'Envio estado highbyte Encoder
+            GoSub TX                    'Campo 5
+        
+            TXBYTE = Encoder.lowbyte    'Envio estado lowbyte Encoder
+            GoSub TX                    'Campo 6
+        
+            CRC = CRC ^ Encoder
+        endif
+        
+        TXBYTE = vel                    'Campo 6Bis
+        CRC = CRC ^ vel          
+        GoSub TX
+        
+        TXBYTE = NroMotor           'Envio numero motor
+        GoSub TX                    'Campo 7
+        CRC = CRC ^ NroMotor
+        CRC = CRC ^ 43690
+        
+        TXBYTE = CRC.highbyte       'Envio estado highbyte CRC
+        GoSub TX                    'Campo 8
+        
+        TXBYTE = CRC.lowbyte        'Envio estado lowbyte CRC
+        GoSub TX                    'Campo 9
+                                             
+        TXBYTE = "#"
+        GoSub TX
+        
+        TXBYTE = "#"
+        GoSub TX
+        
+
+        if inflimit = 1 then
+            inflimit = 0
+        endif
+               
+        txsta.5 = 0   			     'Me aseguro de que este apagado transmisor
+		txenable = 0
+        Return
+  
+TX:     
+        'return  'ICD
+        'GoSub CheckRX
+        IF (txsta.5) AND (pir1.4^$1) Then GoTo TX
+        txreg = TXBYTE
+        txsta.5=1   			     'Activar transmisor            
+        Return
+        
+        
+CheckRX:	
+	    'return 'ICD
+	    
+        IF rcsta.1 = 1 Then         'OverRun del Buffer de Recepcion
+			RCSTA.4=0               'Inicializar Receptor
+			RCSTA.4=1   		    'Inicializar Receptor
+            return
+        EndIF
+        
+	    IF pir1.5 = 0 Then Return
+        
+		tempRC = rcreg
+		
+		IF (tempRC = "i") and (Deep = 0)Then
+				
+				For temp = 1 TO 8
+					Pkt[temp] = 0
+ 				Next temp
+ 				Pkt [0] = "i"
+				Deep = 1
+				CRC2 = 0
+                IF pir1.5 = 1 Then
+                    GoTo CheckRX        '@@@@@@@@@
+                    return
+                EndIF
+                Return
+		EndIF
+		
+		IF Deep = 0 Then
+            IF pir1.5 = 1 Then
+                GoTo CheckRX        '@@@@@@@@@
+                return
+            EndIF
+            Return
+        EndIF
+		 
+		IF Deep < 8 Then 
+			
+			Pkt[Deep] = tempRC
+			if deep = 7 then goto ContRX
+			Deep = Deep + 1
+            IF pir1.5 = 1 Then
+                GoTo CheckRX        '@@@@@@@@@
+                return
+            EndIF
+            return    							
+		EndIF
+		
+ContRX:		
+		Deep = 0 
+		
+		IF (Pkt[7]= nromotor) or (Pkt[7]= 20) Then		'NUMERO DE MOTOR * 20= brodcast
+			Deep = 0
+            CRC2 =  Pkt[1] ^ Pkt[2] ^ Pkt[4] ^ Pkt[5] ^ Pkt[6] ^ Pkt[7] 	'CALCULA CRC de RECEPCION
+								
+			IF CRC2 <> Pkt[3] Then return
+                        
+            IF Pkt[1] = "p" Then	     'Reset equipo
+                '@ reset
+                Return
+            EndIF
+            
+            IF Pkt[1] = "g" Then	     'Transmitir a soft PC limites, posicion, etc, etc
+                GoSub INMEDIATE_TX
+                Return
+            EndIF
+            
+            IF Pkt[1] = "b" Then	     'Comenzar a Grabar Datos PC a SD 
+                
+                Return
+            EndIF
+               
+            IF Pkt[1] = "c" Then	     'Comenzar a Grabar de PC a SD
+            
+                return
+            endif
+            
+            IF Pkt[1] = "a" Then	     'Comando Subir
+			
+                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                
+                tmpSubir = 1
+                tmpBajar = 0
+                ultimo = 0
+                timeout = 0
+                'PORTB.1 = 0
+                'PORTB.0 = 1
+                
+                Vel = Pkt[2]
+                Return
+            EndIF
+          
+            IF Pkt[1] = "z" Then	     'Comando Bajar
+
+                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                tmpSubir = 0
+                tmpBajar = 1
+                ultimo = 1
+                timeout = 0
+                'PORTB.0 = 0
+                'PORTB.1 = 1
+                Vel = Pkt[2]
+                Return  
+            EndIF
+            
+            IF Pkt[1] = "x" Then	     'Comando Stop
+            
+                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                'if automatic = 1 then return
+                tmpSubir = 0
+                tmpBajar = 0
+                timeout = 0
+                PORTB.0 = 0
+                PORTB.1 = 0
+                Return
+            EndIF
+            
+            IF Pkt[1] = "j" Then	     'Detener GoAutomatic
+                
+                Return
+            EndIF
+  
+            
+            IF Pkt[1] = "r" Then	     'Comando Reproducir Rutina grabada en EEPROM
+                
+                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                
+                
+                Return                         
+            EndIF
+            
+            IF Pkt[1] = "l" Then	     'Comando Comenzar Grabacion Rutina en EEPROM
+                
+                if reproduciendo = 1 then return
+                                        
+                Return
+            EndIF
+            
+            IF Pkt[1] = "q" Then	     'Comando Enviar Rutina a PC
+                
+                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                
+               
+                Return
+            EndIF
+            
+            IF Pkt[1] = "n" Then 'Comando Finalizar Grabacion o Reproduccion Rutina en EEPROM
+                
+                Return
+            EndIF
+            
+            IF Pkt[1] = "k" Then	     'Comando ir a automaticamente
+                
+                'PORTB.0 = 0
+                'PORTB.1 = 0
+                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                
+                'IF ErrorEnc = 0 Then
+               ' 	automatic = 0
+               ' 	Return
+               ' EndIF
+                
+                LiberaPause = 0
+                Automatic = 1
+                'timeout = 0
+                'HPwm 1,Pkt[2],1221
+                Vel = Pkt[2]
+                targetEncoder.lowbyte = Pkt[5]
+                targetEncoder.HIGHBYTE = Pkt[6]
+                IF Pkt[4] = "1" Then
+                    IF encoder <= targetencoder Then
+                        'PORTB.0 = 0
+                        'PORTB.1 = 0
+                        timeout = 0
+                        Automatic = 0
+                        Mayor = 1
+                        Return
+                        'GoSub INMEDIATE_TX
+                    EndIF
+                    Mayor =1
+                    tmpSubir = 0
+                    tmpBajar = 1
+                    ultimo = 1
+                EndIF
+                IF Pkt[4] = "2" Then
+                    IF encoder >= targetencoder Then
+                        'PORTB.0 = 0
+                        'PORTB.1 = 0
+                        timeout = 0
+                        Automatic = 0
+                        Mayor = 0
+                        Return
+                        'GoSub INMEDIATE_TX
+                    EndIF
+                    Mayor = 0
+                    tmpSubir = 1
+                    tmpBajar = 0
+                    ultimo = 0
+                EndIF 
+                
+                '##############################################
+                '### 08/2011 control de DMX para que haga go
+                '### calculando el sentido de giro acorde al
+                '### targetEncoder
+                IF Pkt[4] = "8" Then
+                
+                     if antTargetEncoder = Targetencoder then return
+                     antTargetEncoder = TargetEncoder
+                    'Para que quede en una posicion fija dentro de una ventana.
+                    'y no tienda a no encontrar un punto fijo
+                    if targetencoder < (encoder + 30) and targetencoder > (encoder - 30) then return
+                    
+                    if encoder > targetencoder then
+                        Mayor =1
+                        tmpSubir = 0
+                        tmpBajar = 1
+                        ultimo = 1
+                    else
+                        Mayor = 0
+                        tmpSubir = 1
+                        tmpBajar = 0
+                        ultimo = 0
+                    endif
+                endif
+                Return
+            EndIF
+            
+            IF Pkt[1] = "s" Then	     'Comando actualizar final de carrera minEncoder
+                
+                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                
+                minEncoder.lowbyte = Pkt[5]
+                temp = minEncoder.lowbyte
+                write 0, temp
+                pause 5
+                minEncoder.HIGHBYTE = Pkt[6]
+                temp = minEncoder.HIGHBYTE
+                write 1, temp
+                pause 5
+            endif
+            
+            IF Pkt[1] = "d" Then	     'Comando actualizar final de carrera maxEncoder
+                
+                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
+                
+                maxEncoder.lowbyte = Pkt[5]
+                temp = maxEncoder.lowbyte
+                write 2, temp
+                pause 5
+                maxEncoder.HIGHBYTE = Pkt[6]
+                temp = maxEncoder.HIGHBYTE
+                write 3, temp
+                pause 5
+            endif
+		EndIF
+        
+		Return       
+
+subEncoder:
+    
+    porta.0 = 1 'Latch encoder
+    pauseus 100
+    encoder.highbyte = portd
+    porta.1 = 1
+    pauseus 20
+    encoder.lowbyte = portd
+    porta.1 = 0
+    porta.0 = 0
+    
+    timeout = 0    
+    Return
+
+GoAutomatic:
+    'return
+    timeout = 0
+    GoSub subEncoder
+
+    IF Mayor = 1 Then
+        IF encoder <= targetencoder Then
+           tmpSubir = 0
+           tmpBajar = 0
+           PORTB.0 = 0
+           PORTB.1 = 0
+           timeout = 0
+           automatic = 0
+            portb.4=0
+            portb.3=0
+            portb.2=0
+        EndIF
+    Else
+        IF encoder >= targetencoder Then
+           tmpSubir = 0
+           tmpBajar = 0
+           PORTB.0 = 0
+           PORTB.1 = 0
+           timeout = 0
+           automatic = 0
+            portb.4=0
+            portb.3=0
+            portb.2=0
+        EndIF
+    EndIF
+
+    Return
+
+CheckLimits:
+       'return
+        '***********************************************
+        'Rutina para comandar las salidas de Up/Down
+        'previo chequear los limites de carrera
+        '***********************************************
+    if porta.3 = 1 then   ' SI ESTA EN PAUSA
+        'tmpSubir = 0
+        'tmpBajar = 0
+        PORTB.1 = 0
+        PORTB.0 = 0 
+        timeout = 0
+        portb.4=0
+        portb.3=0
+        portb.2=0
+        'automatic = 0
+        Reproduciendo = 0
+        return
+    endif
+    
+    if vel = 0 then
+        portb.4=0
+        portb.3=0
+        portb.2=0
+    endif
+    if vel = 1 then
+        portb.4=0
+        portb.3=0
+        portb.2=1
+    endif
+    if vel = 2 then
+        portb.4=0
+        portb.3=1
+        portb.2=0
+    endif
+    if vel = 3 then
+        portb.4=0
+        portb.3=1
+        portb.2=1
+    endif
+    if vel = 4 then
+        portb.4=1
+        portb.3=0
+        portb.2=0
+    endif
+    if vel = 5 then
+        portb.4=1
+        portb.3=0
+        portb.2=1
+    endif
+    if vel = 6 then
+        portb.4=1
+        portb.3=1
+        portb.2=0
+    endif
+    if vel >= 7 then
+        portb.4=1
+        portb.3=1
+        portb.2=1
+    endif
+    
+    
+    
+        if encoder >= maxEncoder then
+            PORTB.0 = 0
+            tmpSubir = 0
+            'automatic = 0	'########################
+            LimSupSup = 1
+        else
+            LimSupSup = 0
+            'PORTB.0 = tmpsubir
+            portb.0 = tmpsubir
+        endif            
+        if encoder =< minEncoder then
+            PORTB.1 = 0
+            tmpbajar = 0
+            'automatic = 0	'########################
+            liminfsup = 1
+        else
+            liminfsup = 0
+            'PORTB.1 = tmpbajar
+            portb.1 = tmpbajar
+        endif
+return
+   
+End
