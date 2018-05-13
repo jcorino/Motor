@@ -1,10 +1,10 @@
 '****************************************************************
-'*  Name    : MOTOR1.BAS                                        *
+'*  Name    : MOTOR.pbp                                        *
 '*  Author  : Juan Manuel Corino                                *
-'*  Notice  : Copyright (c) 2007 Juan Manuel Corino             *
+'*  Notice  : Copyright (c) 2018 Juan Manuel Corino             *
 '*          : All Rights Reserved                               *
-'*  Date    : 01/05/2013                                        *
-'*  Version : 1.0                                               *
+'*  Date    : 01/05/2018                                        *
+'*  Version : 1.1                                               *
 '*  Notes   : 16F887 @ 20Mhz                                   *
 '*          :                                                   *
 '****************************************************************

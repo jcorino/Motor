@@ -1,0 +1,6 @@
+# Compiler files
+*.ASM
+*.ERR
+*.LST
+*.MAC
+*.O
