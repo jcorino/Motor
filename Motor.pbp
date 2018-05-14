@@ -151,8 +151,6 @@ Vel                 VAR BYTE
 maxEncoder          VAR WORD
 minEncoder          VAR WORD
 
-SendRutina          VAR BIT
-
 InfLimit            var bit
 WaitRec             var bit 'Para avisar que se levanto la pausa en grabacion
 PlayReverse         var bit '0=reproduccion Normal, 1=Reverse
@@ -217,10 +215,6 @@ Loopp:
     
     GoSub CheckRX
     
-    'if SendRutina = 1 then
-    '    gosub INMEDIATE_TX
-    'endif
-    
 '##########################################
 'Esto permite tener una entrada de stop
 'por el momento lo dejo anulado para debug
@@ -272,7 +266,7 @@ Timer_Sub:
         
     EndIF
    
-    if Ac_Seg >= 20 then    'Entro cada 1 Segundo
+    if Ac_Seg >= 60 then    'Entro cada 3 Segundo
         Ac_Seg = 0
         inflimit = 1
     else
@@ -283,38 +277,10 @@ Timer_Sub:
     
 INMEDIATE_TX:
          'return  'ICD
-'        IF Mx = 0 then  return   'Para que transmita solo cuando el Master le asigna un slot de tiempo
         
         cRC = 0
         txenable = 1
 		txsta.5 = 1   		        'Activar transmisor
-		
-    '#######################################################################
-		if SendRutina = 1 then 'Si estoy en modo transmitir rutina #NroRutina
-		
-		return '###############PARA ANULAR ESTA RUTINA QUE NO SE SI SEGUIRA EXISTIENDO
-		
-            TXBYTE = "$"            'Envio de encabezado    Byte 1
-            GoSub TX
-                    
-            TXBYTE = "R"            'Envio de encabezado    Byte 2
-            GoSub TX
-          
-            TXBYTE = "r"            'Envio de encabezado    Byte 3
-            GoSub TX
-            
-            PORTB.0 = 0
-            PORTB.1 = 0
-            tmpSubir = 0
-            tmpBajar = 0
-            timeout = 0
-            'nrorutina = Pkt[2]      'Cargo nro de rutina a reproducir
-            
-            Return
-            
-        endif
-    '###########################################################################
-		
 		
         TXBYTE = "$"            'Envio de encabezado    Byte 1
         GoSub TX
@@ -393,7 +359,7 @@ INMEDIATE_TX:
         TXBYTE = CRC.lowbyte        'Envio estado lowbyte CRC
         GoSub TX                    'Campo 9
                                              
-        TXBYTE = "#"
+        TXBYTE = "#"                'NO SE QUE SENTIDO TIENE TRANSMITIR ESTOS DOS BYTES
         GoSub TX
         
         TXBYTE = "#"
@@ -403,7 +369,8 @@ INMEDIATE_TX:
         if inflimit = 1 then
             inflimit = 0
         endif
-               
+        
+        pause 5         ' Espero que termine de transmitir el ultimo byte antes de apagar el trasmisor       
         txsta.5 = 0   			     'Me aseguro de que este apagado transmisor
 		txenable = 0
         Return
@@ -469,7 +436,7 @@ ContRX:
 		Deep = 0 
 		
 		IF (Pkt[7]= nromotor) or (Pkt[7]= 20) Then		'NUMERO DE MOTOR * 20= brodcast
-			Deep = 0
+			
             CRC2 =  Pkt[1] ^ Pkt[2] ^ Pkt[4] ^ Pkt[5] ^ Pkt[6] ^ Pkt[7] 	'CALCULA CRC de RECEPCION
 								
 			IF CRC2 <> Pkt[3] Then return
