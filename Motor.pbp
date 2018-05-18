@@ -17,6 +17,12 @@
 'Posicion 2-3 RESERVADA maxEncoder
         
 '###################################################################
+  
+'#IF __PROCESSOR__ = "16F887"
+ '   #CONFIG 
+  '  __config _FOSC_HS & _WDT_ON & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _LVP_OFF & _DEBUG_OFF &  _WRT_OFF & _BOR40V
+   ' #ENDCONFIG
+'#endif
 
 INCLUDE "modedefs.bas"
 Define LOADER_USED	1
@@ -194,7 +200,6 @@ txsta.5 = 0   			'Me aseguro de que este apagado transmisor
 
 
 'trisc.6 = 1
-  
 Loopp:
 
     
