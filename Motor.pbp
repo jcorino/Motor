@@ -38,7 +38,8 @@ IOCB = 0
 rcsta = $90                 'Enable Asynchronous Serial Receive
 txsta = $24                 'Enable Asynchronous Serial Transmit
 'ICD---------------------
-spbrg = 64                  '19.2 KBaud @ 20Mhz
+'spbrg = 64                  '19.2 KBaud @ 20Mhz
+spbrg = 10                  '115.2 KBaud @ 20Mhz
 '--------------------------
 'spbrg = 25                  '19.2 KBaud @ 8Mhz
 'option_reg = $87			'Set timer0 in TimerMode and prescaler 1:128
@@ -68,8 +69,9 @@ TRISE.1 = 0                 'PIN 9 - Salida general 3.
 'TRISB.2 = 0                 'PIN 35 - Salida Selector vel 1.
 'TRISB.3 = 0                 'PIN 36 - Salida Selector vel 2.
 'TRISB.4 = 0                 'PIN 37 - Salida Selector vel 3.
-portb = 0
+
 trisb = 0
+portb = 0
 
 TRISC.1 = 0                 'PIN 16 - Salida control TX RS485.
 
@@ -97,45 +99,30 @@ DPIN                VAR PORTC.4         'I2C data pin
 CPIN                VAR PORTC.3         'I2C clock pin
 PORTC.2 = 0                             'TIENE QUE ESTAR EN 0 PARA QUE FUNCIONEN LAS MEMORIAS
 
-txEnable            var PORTC.1         'Control TX RS485.
+tx485               var PORTC.1         'Control TX RS485.
 
-'Mx                  VAR PORTC.4         'Entrada Control Flujo
-'botPause            var PORTD.2
-'botStopEjecut       var PORTD.3
-'Conf                var PORTC.5        'Salida Control Flujo 
 '#################################################################
 
 NroMotor            CON 1
 NroMen              CON %10100000
 
+ToSend              var byte
+
 StatusByte          VAR BYTE
-RutinaStatus        VAR BYTE
-NroRutina           VAR BYTE
-NroCue              VAR BYTE
+StatusByte1         VAR BYTE
+StatusByte2         VAR BYTE
+StatusByte3         VAR BYTE
 
-Grabando            VAR rutinastatus.0
-Reproduciendo       VAR rutinastatus.1
-Automatic           VAR rutinastatus.2
-'inPause             VAR rutinastatus.3
-Cue                 VAR rutinastatus.4
-
-ErrorEnc			VAR	StatusByte.0       '1=Normal 0=Error Encoder
+'ErrorEnc			VAR	StatusByte.0       '1=Normal 0=Error Encoder
 tmpSubir            VAR StatusByte.1
 tmpBajar            VAR StatusByte.2
-Emergencia          VAR StatusByte.3
-LimSupSup           VAR StatusByte.4
-LimInfSup           VAR StatusByte.5
-'RESERVADO PARA INFORMAR LIMITES    var statusbyte.7
+Automatic           VAR StatusByte.3        'Esta en 1 si esta haciendo GoAutomatic
+LimSupSup           VAR StatusByte.4        'Si se supero Limite Superior
+LimInfSup           VAR StatusByte.5        'Si se supero Limite Inferior
 
-oldtmpSubir         var byte
-oldtmpBajar         var byte
-oldSubir            var byte
-oldBajar            var byte
-LiberaPause         var bit
 
 temp                VAR BYTE
 tempRC              var byte
-tempW				VAR	WORD
 
 Deep                VAR BYTE
 Ac_Seg              VAR BYTE
@@ -145,21 +132,17 @@ Encoder             VAR WORD
 Ac_MS               VAR BYTE
 
 targetEncoder       VAR WORD
-Ultimo              VAR BIT
 Mayor               VAR BIT
 
 CRC2				VAR	BYTE
 CRC					VAR	WORD
 
-Sentido             VAR BYTE
 Vel                 VAR BYTE
 
 maxEncoder          VAR WORD
 minEncoder          VAR WORD
 
 InfLimit            var bit
-WaitRec             var bit 'Para avisar que se levanto la pausa en grabacion
-PlayReverse         var bit '0=reproduccion Normal, 1=Reverse
 antTargetEncoder    var word
 Pkt                 VAR BYTE[9]
 tmpArray            VAR BYTE[8]
@@ -170,16 +153,13 @@ Start:              'Inicio. LLamarla implica Soft-Reset
 
     Clear           'Inicializar todas las variables a cero
     portb = 0
-    txEnable = 0
+    tx485 = 0
+    TXSTA.5 = 0   			'Me aseguro de que este apagado transmisor
     
     pir1.0 = 0      'Cargo Timer
     TMR1L = 243
     TMR1H = 11
 '#################################################################
-
-portb.4 = 1
-pause 500
-portb.4 = 0
 
 read 0, temp
 minEncoder.lowBYTE = temp
@@ -191,50 +171,19 @@ maxEncoder.lowBYTE = temp
 read 3, temp
 maxEncoder.HIGHBYTE = temp
           
-'Encoder = 32000
+Encoder = 32000
 
-'ICD---------------------
-txsta.5 = 0   			'Me aseguro de que este apagado transmisor
-'------------------------
-
-
-
-'trisc.6 = 1
 Loopp:
 
-    
-    IF Reproduciendo = 1 Then 
-        'gosub Reproducir
-    endif
-    
     IF pir1.0 = 1 Then 
         pir1.0 = 0
         TMR1L = 243
         TMR1H = 11
         GoSub subEncoder
-        'GoSub INMEDIATE_TX
         GoSub Timer_Sub
     EndIF
     
-    'GoSub INMEDIATE_TX
-    
     GoSub CheckRX
-    
-'##########################################
-'Esto permite tener una entrada de stop
-'por el momento lo dejo anulado para debug
-'##########################################   
-'    if porta.3 = 0 then
-'        tmpSubir = 0
-'        tmpBajar = 0
-'        PORTB.1 = 0
-'        PORTB.0 = 0 
-'        timeout = 0
-'        automatic = 0
-'        Reproduciendo = 0
-'    endif
-'##########################################
-    
     
     GoTo Loopp
     
@@ -259,115 +208,99 @@ Timer_Sub:
     
         gosub CheckLimits
         
-        if tmpbajar = 1 then
-            sentido = 0
-        else
-            if tmpsubir = 1 then
-                sentido = 1
-            else
-                sentido = 2
-            endif
-        endif
-        
     EndIF
    
     if Ac_Seg >= 60 then    'Entro cada 3 Segundo
         Ac_Seg = 0
         inflimit = 1
     else
+        Encoder = Encoder + 1 'DEBUG
+        gosub INMEDIATE_TX    'DEBUG
         Ac_Seg = Ac_Seg +1
     endif
     
     Return
     
 INMEDIATE_TX:
-         'return  'ICD
         
-        cRC = 0
-        txenable = 1
-		txsta.5 = 1   		        'Activar transmisor
+        CRC = 0
+        tx485 = 1
+		TXSTA.5 = 1                     'Activar transmisor
 		
-        TXBYTE = "$"            'Envio de encabezado    Byte 1
-        GoSub TX
-                    
-        TXBYTE = "R"            'Envio de encabezado    Byte 2
-        GoSub TX
-          
-        TXBYTE = "$"            'Envio de encabezado    Byte 3
+        TXBYTE = ":"                    'Envio de encabezado    Byte 1
         GoSub TX
         
-        if inflimit = 1 then          'Campo 1
-            TXBYTE = 255
-            CRC = CRC ^ 255
-            GoSub TX 
+        if inflimit = 1 then            'Campo 1
+            tosend = 255                'Transmito 255 en HEX
+            GoSub AsciiToHexTX
+            CRC = CRC ^ 255 
         else
-            TXBYTE = statusbyte             
+            tosend = statusbyte             
             CRC = CRC ^ statusbyte
-            GoSub TX        
+            GoSub AsciiToHexTX        
         endif
         
         if inflimit = 1 then          'Campo 2
-            TXBYTE = maxencoder.highbyte   
+            tosend = maxencoder.highbyte   
             CRC = CRC ^ maxencoder.highbyte
-            GoSub TX   
+            GoSub AsciiToHexTX   
         else
-'            rutinastatus.3 = botPause 'Boton pausa por Hard  
-            TXBYTE = rutinastatus   
-            CRC = CRC ^ rutinastatus
-            GoSub TX        
+            tosend = StatusByte3   
+            CRC = CRC ^ StatusByte3
+            GoSub AsciiToHexTX        
         endif
         
         if inflimit = 1 then            'Campo 3    
-            TXBYTE = maxencoder.lowbyte      
+            tosend = maxencoder.lowbyte      
        	    CRC = CRC ^ maxencoder.lowbyte
-       	    GoSub TX
+       	    GoSub AsciiToHexTX
         else
-            TXBYTE = nrorutina      
-       	    CRC = CRC ^ nrorutina
-       	    GoSub TX
+            tosend = StatusByte1      
+       	    CRC = CRC ^ StatusByte1
+       	    GoSub AsciiToHexTX
         endif
                 
-        TXBYTE = nrocue                 'Campo 4
-        CRC = CRC ^ nrocue          
-        GoSub TX
+        tosend = StatusByte2                 'Campo 4
+        CRC = CRC ^ StatusByte2          
+        GoSub AsciiToHexTX
         
         if inflimit = 1 then
-            TXBYTE = minEncoder.highbyte
-            gosub TX
+            tosend = minEncoder.highbyte
+            GoSub AsciiToHexTX
             
-            TXBYTE = minEncoder.lowbyte
-            gosub TX
+            tosend = minEncoder.lowbyte
+            GoSub AsciiToHexTX
             
             CRC = CRC ^ minencoder
         else
-            TXBYTE = Encoder.highbyte   'Envio estado highbyte Encoder
-            GoSub TX                    'Campo 5
+            tosend = Encoder.highbyte   'Envio estado highbyte Encoder
+            GoSub AsciiToHexTX                    'Campo 5
         
-            TXBYTE = Encoder.lowbyte    'Envio estado lowbyte Encoder
-            GoSub TX                    'Campo 6
+            tosend = Encoder.lowbyte    'Envio estado lowbyte Encoder
+            GoSub AsciiToHexTX                    'Campo 6
         
             CRC = CRC ^ Encoder
         endif
         
-        TXBYTE = vel                    'Campo 6Bis
+        tosend = vel                    'Campo 6Bis
         CRC = CRC ^ vel          
-        GoSub TX
+        GoSub AsciiToHexTX
         
-        TXBYTE = NroMotor           'Envio numero motor
-        GoSub TX                    'Campo 7
+        tosend = NroMotor           'Envio numero motor
+        GoSub AsciiToHexTX                    'Campo 7
         CRC = CRC ^ NroMotor
         CRC = CRC ^ 43690
         
-        TXBYTE = CRC.highbyte       'Envio estado highbyte CRC
-        GoSub TX                    'Campo 8
+        tosend = CRC.highbyte       'Envio estado highbyte CRC
+        GoSub AsciiToHexTX                    'Campo 8
         
-        TXBYTE = CRC.lowbyte        'Envio estado lowbyte CRC
-        GoSub TX                    'Campo 9
+        tosend = CRC.lowbyte        'Envio estado lowbyte CRC
+        GoSub AsciiToHexTX                    'Campo 9
                                              
-        TXBYTE = "#"                'NO SE QUE SENTIDO TIENE TRANSMITIR ESTOS DOS BYTES
+        TXBYTE = 13                'Transmito retroceso y salto de linea
         GoSub TX
         
-        TXBYTE = "#"
+        TXBYTE = 10
         GoSub TX
         
 
@@ -375,33 +308,58 @@ INMEDIATE_TX:
             inflimit = 0
         endif
         
-        pause 5         ' Espero que termine de transmitir el ultimo byte antes de apagar el trasmisor       
-        txsta.5 = 0   			     'Me aseguro de que este apagado transmisor
-		txenable = 0
+        pauseus 500                  'Espero que transmita ultimo byte
+        TXSTA.5 = 0   			     'Me aseguro de que este apagado transmisor
+		tx485 = 0
         Return
-  
+
+'################################################################################
+'RUTINAS DE TRANSMISION PUERTO SERIE HARD
+'SI QUIERO ENVIAR EL ASCII EQUIVALENTE AL HEXA TENGO QUE 
+'CARGAR ToSend CON CON EL BYTE A ENVIAR Y LLAMAR A AsciiToHexTX:
+'ESTO VA A ENVIAR DOS CARACTERES POR EL PUERTO SERIE.
+'EJEMPLO: ToSend = 255 ----> Envia caracter "F" + "F"
+'Si quiero enviar el caracter binario cargar TXBYTE y llamar a TX:
+
+AsciiToHexTX:
+ 
+        temp = tosend >> 4        'Aislo 4 bits mas significativos
+        GOSUB TXHex
+        
+        temp = tosend & %00001111 'Aislo 4 bits menos significativos 
+        GOSUB TXHex
+        return
+
+TXHex:     
+        lookup temp, ["0123456789ABCDEF"],TXBYTE 
+        
 TX:     
-        'return  'ICD
-        'GoSub CheckRX
-        IF (txsta.5) AND (pir1.4^$1) Then GoTo TX
-        txreg = TXBYTE
-        txsta.5=1   			     'Activar transmisor            
+        IF PIR1.4 = 0 Then GoTo TX       'PIR1.4 = TXIF
+        TXREG = TXBYTE
         Return
-        
-        
-CheckRX:	
-	    'return 'ICD
-	    
+'################################################################################        
+     
+     
+   
+CheckRX:    
+            
         IF rcsta.1 = 1 Then         'OverRun del Buffer de Recepcion
 			RCSTA.4=0               'Inicializar Receptor
 			RCSTA.4=1   		    'Inicializar Receptor
+            Deep = 0
             return
         EndIF
         
-	    IF pir1.5 = 0 Then Return
+	    IF PIR1.5 = 0 Then Return   '1 = hay datos en el buffer.
         
-		tempRC = rcreg
-		
+        if RCSTA.2 then             'Framing Error bit
+		  tempRC = RCREG            'tengo que descartar ese byte
+		  Deep = 0
+          return                    'por eso lo leo para sacarlo del
+        Else                        'Buffer
+          tempRC = RCREG
+        endif                       
+        
 		IF (tempRC = "i") and (Deep = 0)Then
 				
 				For temp = 1 TO 8
@@ -410,16 +368,16 @@ CheckRX:
  				Pkt [0] = "i"
 				Deep = 1
 				CRC2 = 0
-                IF pir1.5 = 1 Then
-                    GoTo CheckRX        '@@@@@@@@@
+                IF PIR1.5 = 1 Then      '1 = hay datos en el buffer.
+                    GoTo CheckRX        
                     return
                 EndIF
                 Return
 		EndIF
 		
 		IF Deep = 0 Then
-            IF pir1.5 = 1 Then
-                GoTo CheckRX        '@@@@@@@@@
+            IF pir1.5 = 1 Then      '1 = hay datos en el buffer.
+                GoTo CheckRX        
                 return
             EndIF
             Return
@@ -430,14 +388,37 @@ CheckRX:
 			Pkt[Deep] = tempRC
 			if deep = 7 then goto ContRX
 			Deep = Deep + 1
-            IF pir1.5 = 1 Then
-                GoTo CheckRX        '@@@@@@@@@
+            IF pir1.5 = 1 Then      '1 = hay datos en el buffer.
+                GoTo CheckRX        
                 return
             EndIF
             return    							
 		EndIF
 		
-ContRX:		
+ContRX:
+
+
+
+' "p"       Reset equipo - Utilizada en PICs con reset por soft (18F)
+' "g"       Transmitir a soft PC limites, posicion, etc, etc - Es la que utilizo para reportar
+' "a"       Comando Subir
+' "z"       Comando Bajar
+' "x"       Comando Stop
+' "j"       Detener GoAutomatic DEBO UTILIZARLA - IMPLEMENTAR CODIGO
+' "k"       Comando ir a automaticamente
+' "s"       Comando actualizar final de carrera minEncoder
+' "d"       Comando actualizar final de carrera maxEncoder
+
+' "r"       Comando Reproducir Rutina grabada en EEPROM - NO UTILIZADA
+' "b"       Comenzar a Grabar Datos PC a SD - NO UTILIZADA
+' "c"       Comenzar a Grabar de PC a SD - NO UTILIZADA	
+' "r"       Comando Reproducir Rutina grabada en EEPROM - NO UTILIZADA
+' "l"       Comando Comenzar Grabacion Rutina en EEPROM   - NO UTILIZADA
+' "q"       Comando Enviar Rutina a PC - NO UTILIZADA
+' "n"       Comando Finalizar Grabacion o Reproduccion Rutina en EEPROM - NO UTILIZADA
+
+
+	
 		Deep = 0 
 		
 		IF (Pkt[7]= nromotor) or (Pkt[7]= 20) Then		'NUMERO DE MOTOR * 20= brodcast
@@ -455,49 +436,24 @@ ContRX:
                 GoSub INMEDIATE_TX
                 Return
             EndIF
-            
-            IF Pkt[1] = "b" Then	     'Comenzar a Grabar Datos PC a SD 
-                
-                Return
-            EndIF
                
-            IF Pkt[1] = "c" Then	     'Comenzar a Grabar de PC a SD
-            
-                return
-            endif
-            
             IF Pkt[1] = "a" Then	     'Comando Subir
-			
-                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
-                
                 tmpSubir = 1
                 tmpBajar = 0
-                ultimo = 0
                 timeout = 0
-                'PORTB.1 = 0
-                'PORTB.0 = 1
-                
                 Vel = Pkt[2]
                 Return
             EndIF
           
             IF Pkt[1] = "z" Then	     'Comando Bajar
-
-                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
                 tmpSubir = 0
                 tmpBajar = 1
-                ultimo = 1
                 timeout = 0
-                'PORTB.0 = 0
-                'PORTB.1 = 1
                 Vel = Pkt[2]
                 Return  
             EndIF
             
             IF Pkt[1] = "x" Then	     'Comando Stop
-            
-                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
-                'if automatic = 1 then return
                 tmpSubir = 0
                 tmpBajar = 0
                 timeout = 0
@@ -507,86 +463,38 @@ ContRX:
             EndIF
             
             IF Pkt[1] = "j" Then	     'Detener GoAutomatic
-                
+                ' IMPLEMENTAR CODIGO PARA DETERNER AUTOMATICOS
                 Return
             EndIF
   
-            
-            IF Pkt[1] = "r" Then	     'Comando Reproducir Rutina grabada en EEPROM
-                
-                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
-                
-                
-                Return                         
-            EndIF
-            
-            IF Pkt[1] = "l" Then	     'Comando Comenzar Grabacion Rutina en EEPROM
-                
-                if reproduciendo = 1 then return
-                                        
-                Return
-            EndIF
-            
-            IF Pkt[1] = "q" Then	     'Comando Enviar Rutina a PC
-                
-                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
-                
-               
-                Return
-            EndIF
-            
-            IF Pkt[1] = "n" Then 'Comando Finalizar Grabacion o Reproduccion Rutina en EEPROM
-                
-                Return
-            EndIF
-            
             IF Pkt[1] = "k" Then	     'Comando ir a automaticamente
                 
-                'PORTB.0 = 0
-                'PORTB.1 = 0
-                'if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
-                
-                'IF ErrorEnc = 0 Then
-               ' 	automatic = 0
-               ' 	Return
-               ' EndIF
-                
-                LiberaPause = 0
                 Automatic = 1
                 'timeout = 0
-                'HPwm 1,Pkt[2],1221
                 Vel = Pkt[2]
                 targetEncoder.lowbyte = Pkt[5]
                 targetEncoder.HIGHBYTE = Pkt[6]
                 IF Pkt[4] = "1" Then
                     IF encoder <= targetencoder Then
-                        'PORTB.0 = 0
-                        'PORTB.1 = 0
                         timeout = 0
                         Automatic = 0
                         Mayor = 1
                         Return
-                        'GoSub INMEDIATE_TX
                     EndIF
                     Mayor =1
                     tmpSubir = 0
                     tmpBajar = 1
-                    ultimo = 1
                 EndIF
                 IF Pkt[4] = "2" Then
                     IF encoder >= targetencoder Then
-                        'PORTB.0 = 0
-                        'PORTB.1 = 0
                         timeout = 0
                         Automatic = 0
                         Mayor = 0
                         Return
-                        'GoSub INMEDIATE_TX
                     EndIF
                     Mayor = 0
                     tmpSubir = 1
                     tmpBajar = 0
-                    ultimo = 0
                 EndIF 
                 
                 '##############################################
@@ -605,20 +513,16 @@ ContRX:
                         Mayor =1
                         tmpSubir = 0
                         tmpBajar = 1
-                        ultimo = 1
                     else
                         Mayor = 0
                         tmpSubir = 1
                         tmpBajar = 0
-                        ultimo = 0
                     endif
                 endif
                 Return
             EndIF
             
             IF Pkt[1] = "s" Then	     'Comando actualizar final de carrera minEncoder
-                
-                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
                 
                 minEncoder.lowbyte = Pkt[5]
                 temp = minEncoder.lowbyte
@@ -631,8 +535,6 @@ ContRX:
             endif
             
             IF Pkt[1] = "d" Then	     'Comando actualizar final de carrera maxEncoder
-                
-                if reproduciendo = 1 then return 'Si esta reproduciendo no hago nada
                 
                 maxEncoder.lowbyte = Pkt[5]
                 temp = maxEncoder.lowbyte
@@ -648,6 +550,8 @@ ContRX:
 		Return       
 
 subEncoder:
+    'DEBUG
+    return
     
     porta.0 = 1 'Latch encoder
     pauseus 100
@@ -662,7 +566,7 @@ subEncoder:
     Return
 
 GoAutomatic:
-    'return
+
     timeout = 0
     GoSub subEncoder
 
@@ -701,21 +605,17 @@ CheckLimits:
         'previo chequear los limites de carrera
         '***********************************************
     if porta.3 = 1 then   ' SI ESTA EN PAUSA
-        'tmpSubir = 0
-        'tmpBajar = 0
         PORTB.1 = 0
         PORTB.0 = 0 
         timeout = 0
-        portb.4=0
-        portb.3=0
+        portb.4=0         'ACA Baja velocidad a 0 cuando esta en pausa
+        portb.3=0                  
         portb.2=0
-        'automatic = 0
-        Reproduciendo = 0
         return
     endif
     
-    if vel = 0 then
-        portb.4=0
+    if vel = 0 then                 
+        portb.4=0                  
         portb.3=0
         portb.2=0
     endif
