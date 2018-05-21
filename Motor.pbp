@@ -112,8 +112,10 @@ StatusByte          VAR BYTE
 StatusByte1         VAR BYTE
 StatusByte2         VAR BYTE
 StatusByte3         VAR BYTE
-
-'ErrorEnc			VAR	StatusByte.0       '1=Normal 0=Error Encoder
+StatusByte4         var byte    'OJO esta variable no puede ser 255 sino el receptor
+                                'creeria que estoy informando limites - En rutina TX 
+                                'Si esta en 255 la paso a 254 por precaucion.
+                                
 tmpSubir            VAR StatusByte.1
 tmpBajar            VAR StatusByte.2
 Automatic           VAR StatusByte.3        'Esta en 1 si esta haciendo GoAutomatic
@@ -135,7 +137,7 @@ targetEncoder       VAR WORD
 Mayor               VAR BIT
 
 CRC2				VAR	BYTE
-CRC					VAR	WORD
+CRC					VAR	byte
 
 Vel                 VAR BYTE
 
@@ -235,8 +237,11 @@ INMEDIATE_TX:
             GoSub AsciiToHexTX
             CRC = CRC ^ 255 
         else
-            tosend = statusbyte             
-            CRC = CRC ^ statusbyte
+            if Statusbyte4 = 255 then    'OJO esta variable no puede ser 255 sino el receptor
+                statusbyte4 = 254        'creeria que estoy informando limites
+            endif
+            tosend = statusbyte4             
+            CRC = CRC ^ statusbyte4
             GoSub AsciiToHexTX        
         endif
         
@@ -255,47 +260,48 @@ INMEDIATE_TX:
        	    CRC = CRC ^ maxencoder.lowbyte
        	    GoSub AsciiToHexTX
         else
-            tosend = StatusByte1      
-       	    CRC = CRC ^ StatusByte1
+            tosend = StatusByte2      
+       	    CRC = CRC ^ StatusByte2
        	    GoSub AsciiToHexTX
         endif
                 
-        tosend = StatusByte2                 'Campo 4
-        CRC = CRC ^ StatusByte2          
+        tosend = StatusByte1                 'Campo 4
+        CRC = CRC ^ StatusByte1          
         GoSub AsciiToHexTX
         
         if inflimit = 1 then
             tosend = minEncoder.highbyte
             GoSub AsciiToHexTX
+            CRC = CRC ^ minencoder.highbyte
             
             tosend = minEncoder.lowbyte
             GoSub AsciiToHexTX
+            CRC = CRC ^ minencoder.lowbyte
             
-            CRC = CRC ^ minencoder
         else
             tosend = Encoder.highbyte   'Envio estado highbyte Encoder
             GoSub AsciiToHexTX                    'Campo 5
-        
+            CRC = CRC ^ Encoder.highbyte
+            
             tosend = Encoder.lowbyte    'Envio estado lowbyte Encoder
             GoSub AsciiToHexTX                    'Campo 6
-        
-            CRC = CRC ^ Encoder
+            CRC = CRC ^ Encoder.lowbyte
         endif
         
-        tosend = vel                    'Campo 6Bis
+        tosend = vel                    'Campo 7
         CRC = CRC ^ vel          
         GoSub AsciiToHexTX
         
         tosend = NroMotor           'Envio numero motor
-        GoSub AsciiToHexTX                    'Campo 7
-        CRC = CRC ^ NroMotor
-        CRC = CRC ^ 43690
-        
-        tosend = CRC.highbyte       'Envio estado highbyte CRC
         GoSub AsciiToHexTX                    'Campo 8
+        CRC = CRC ^ NroMotor
         
-        tosend = CRC.lowbyte        'Envio estado lowbyte CRC
+        tosend = StatusByte       'Envio StatusByte4
         GoSub AsciiToHexTX                    'Campo 9
+        CRC = CRC ^ StatusByte
+        
+        tosend = CRC                'Envio estado CRC
+        GoSub AsciiToHexTX                    'Campo 10
                                              
         TXBYTE = 13                'Transmito retroceso y salto de linea
         GoSub TX
@@ -360,12 +366,12 @@ CheckRX:
           tempRC = RCREG
         endif                       
         
-		IF (tempRC = "i") and (Deep = 0)Then
+		IF (tempRC = "@") and (Deep = 0)Then
 				
 				For temp = 1 TO 8
 					Pkt[temp] = 0
  				Next temp
- 				Pkt [0] = "i"
+ 				Pkt [0] = "@"
 				Deep = 1
 				CRC2 = 0
                 IF PIR1.5 = 1 Then      '1 = hay datos en el buffer.
