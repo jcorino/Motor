@@ -19,9 +19,9 @@
 '###################################################################
   
 '#IF __PROCESSOR__ = "16F887"
- '   #CONFIG 
-  '  __config _FOSC_HS & _WDT_ON & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _LVP_OFF & _DEBUG_OFF &  _WRT_OFF & _BOR40V
-   ' #ENDCONFIG
+    '#CONFIG 
+   '__config _FOSC_HS & _WDT_ON & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _LVP_OFF & _DEBUG_OFF &  _WRT_OFF & _BOR40V
+  '#ENDCONFIG
 '#endif
 
 INCLUDE "modedefs.bas"
@@ -88,9 +88,6 @@ TRISD.5 = 1                 'PIN 28 - Entrada encoder 5.
 TRISD.6 = 1                 'PIN 29 - Entrada encoder 6.
 TRISD.7 = 1                 'PIN 30 - Entrada encoder 7.
 
-
-
-
 '#################################################################
 'Subir               VAR PORTB.0
 'Bajar               VAR PORTB.1
@@ -98,7 +95,6 @@ TRISD.7 = 1                 'PIN 30 - Entrada encoder 7.
 DPIN                VAR PORTC.4         'I2C data pin
 CPIN                VAR PORTC.3         'I2C clock pin
 PORTC.2 = 0                             'TIENE QUE ESTAR EN 0 PARA QUE FUNCIONEN LAS MEMORIAS
-
 tx485               var PORTC.1         'Control TX RS485.
 
 '#################################################################
@@ -108,13 +104,13 @@ NroMen              CON %10100000
 
 ToSend              var byte
 
-StatusByte          VAR BYTE
-StatusByte1         VAR BYTE
-StatusByte2         VAR BYTE
-StatusByte3         VAR BYTE
-StatusByte4         var byte    'OJO esta variable no puede ser 255 sino el receptor
-                                'creeria que estoy informando limites - En rutina TX 
-                                'Si esta en 255 la paso a 254 por precaucion.
+StatusByte          VAR BYTE    'StatusByte Se transmite siempre
+StatusByte1         VAR BYTE    'StatusByte1 Se transmite siempre
+StatusByte2         VAR BYTE    'StatusByte2 Se transmite si no tengo que informar limites
+StatusByte3         VAR BYTE    'StatusByte3 Se transmite si no tengo que informar limites
+StatusByte4         var byte    'OJO StatusByte4 se transmite siempre pero no puede ser=255
+                                'sino el receptor creeria que estoy informando limites
+                                'En rutina TX: si esta en 255 la paso a 254 por precaucion.
                                 
 tmpSubir            VAR StatusByte.1
 tmpBajar            VAR StatusByte.2
@@ -129,6 +125,7 @@ tempRC              var byte
 Deep                VAR BYTE
 Ac_Seg              VAR BYTE
 timeout             VAR BYTE
+timeoutRX           VAR bit
 TXBYTE              VAR BYTE
 Encoder             VAR WORD
 Ac_MS               VAR BYTE
@@ -191,6 +188,11 @@ Loopp:
     
 Timer_Sub:
     
+    'if timeoutRX = 1 then      'Si no recibe un byte por 50ms despues que comenzo
+    '    Deep = 0               'a recibir una trama, aborta la trama completa
+    'endif
+    'timeoutRX = 1
+    
     IF timeout >= 4 Then   '200ms
         tmpbajar = 0
         tmpsubir = 0
@@ -217,7 +219,7 @@ Timer_Sub:
         inflimit = 1
     else
         Encoder = Encoder + 1 'DEBUG
-        gosub INMEDIATE_TX    'DEBUG
+        'gosub INMEDIATE_TX    'DEBUG
         Ac_Seg = Ac_Seg +1
     endif
     
@@ -227,97 +229,90 @@ INMEDIATE_TX:
         
         CRC = 0
         tx485 = 1
-		TXSTA.5 = 1                     'Activar transmisor
+		TXSTA.5 = 1                             'Activar transmisor
 		
-        TXBYTE = ":"                    'Envio de encabezado    Byte 1
+        TXBYTE = ":"                            'Envio inicio de trama 
         GoSub TX
         
-        if inflimit = 1 then            'Campo 1
-            tosend = 255                'Transmito 255 en HEX
+        if inflimit = 1 then                    'Campo 1
+            tosend = 255                        'Esta Informando Limites
             GoSub AsciiToHexTX
             CRC = CRC ^ 255 
-        else
-            if Statusbyte4 = 255 then    'OJO esta variable no puede ser 255 sino el receptor
-                statusbyte4 = 254        'creeria que estoy informando limites
-            endif
-            tosend = statusbyte4             
-            CRC = CRC ^ statusbyte4
-            GoSub AsciiToHexTX        
-        endif
-        
-        if inflimit = 1 then          'Campo 2
-            tosend = maxencoder.highbyte   
-            CRC = CRC ^ maxencoder.highbyte
-            GoSub AsciiToHexTX   
-        else
-            tosend = StatusByte3   
-            CRC = CRC ^ StatusByte3
-            GoSub AsciiToHexTX        
-        endif
-        
-        if inflimit = 1 then            'Campo 3    
-            tosend = maxencoder.lowbyte      
-       	    CRC = CRC ^ maxencoder.lowbyte
+            
+            tosend = maxencoder.highbyte        'Campo 2
+            CRC = CRC ^ maxencoder.highbyte     'LimiteSup highbyte
+            GoSub AsciiToHexTX 
+       
+            tosend = maxencoder.lowbyte         'Campo 3
+       	    CRC = CRC ^ maxencoder.lowbyte      'LimiteSup lowbyte
        	    GoSub AsciiToHexTX
-        else
-            tosend = StatusByte2      
-       	    CRC = CRC ^ StatusByte2
-       	    GoSub AsciiToHexTX
-        endif
-                
-        tosend = StatusByte1                 'Campo 4
-        CRC = CRC ^ StatusByte1          
-        GoSub AsciiToHexTX
-        
-        if inflimit = 1 then
-            tosend = minEncoder.highbyte
-            GoSub AsciiToHexTX
+       	    
+       	    tosend = minEncoder.highbyte        'Campo 4
+            GoSub AsciiToHexTX                  'LimiteInf highbyte
             CRC = CRC ^ minencoder.highbyte
             
-            tosend = minEncoder.lowbyte
-            GoSub AsciiToHexTX
+            tosend = minEncoder.lowbyte         'Campo 5
+            GoSub AsciiToHexTX                  'LimiteInf lowbyte   
             CRC = CRC ^ minencoder.lowbyte
             
+            inflimit = 0
+            
         else
-            tosend = Encoder.highbyte   'Envio estado highbyte Encoder
-            GoSub AsciiToHexTX                    'Campo 5
+            
+            if Statusbyte4 = 255 then       'Campo 1
+                statusbyte4 = 254           'Statusbyte4
+            endif                           'OJO esta variable no puede ser 255 sino el receptor
+            tosend = statusbyte4            'creeria que estoy informando limites    
+            CRC = CRC ^ statusbyte4
+            GoSub AsciiToHexTX        
+       
+            tosend = StatusByte3            'Campo 2
+            CRC = CRC ^ StatusByte3         'StatusByte3
+            GoSub AsciiToHexTX        
+        
+            tosend = StatusByte2            'Campo 3 
+       	    CRC = CRC ^ StatusByte2         'StatusByte2
+       	    GoSub AsciiToHexTX
+       	    
+            tosend = Encoder.highbyte       'Campo 4
+            GoSub AsciiToHexTX              'Encoder actual highbyte
             CRC = CRC ^ Encoder.highbyte
             
-            tosend = Encoder.lowbyte    'Envio estado lowbyte Encoder
-            GoSub AsciiToHexTX                    'Campo 6
+            tosend = Encoder.lowbyte        'Campo 5
+            GoSub AsciiToHexTX              'Encoder actual lowbyte     
             CRC = CRC ^ Encoder.lowbyte
+            
         endif
         
-        tosend = vel                    'Campo 7
-        CRC = CRC ^ vel          
-        GoSub AsciiToHexTX
+            tosend = StatusByte1            'Campo 6
+            CRC = CRC ^ StatusByte1         'StatusByte1 
+            GoSub AsciiToHexTX
+            
+            tosend = StatusByte             'Campo 7
+            GoSub AsciiToHexTX              'StatusByte
+            CRC = CRC ^ StatusByte          
+            
+            tosend = vel                    'Campo 8
+            CRC = CRC ^ vel                 'Velocidad
+            GoSub AsciiToHexTX
         
-        tosend = NroMotor           'Envio numero motor
-        GoSub AsciiToHexTX                    'Campo 8
-        CRC = CRC ^ NroMotor
-        
-        tosend = StatusByte       'Envio StatusByte4
-        GoSub AsciiToHexTX                    'Campo 9
-        CRC = CRC ^ StatusByte
-        
-        tosend = CRC                'Envio estado CRC
-        GoSub AsciiToHexTX                    'Campo 10
-                                             
-        TXBYTE = 13                'Transmito retroceso y salto de linea
-        GoSub TX
-        
-        TXBYTE = 10
-        GoSub TX
-        
-
-        if inflimit = 1 then
-            inflimit = 0
-        endif
-        
+            tosend = NroMotor               'Campo 9
+            GoSub AsciiToHexTX              'Nro Motor      
+            CRC = CRC ^ NroMotor
+            
+            tosend = CRC                    'Campo 10
+            GoSub AsciiToHexTX              'CRC          
+                                                
+            TXBYTE = 13                     'Transmito Cr + Lf
+            GoSub TX
+            
+            TXBYTE = 10
+            GoSub TX
+            
         pauseus 500                  'Espero que transmita ultimo byte
         TXSTA.5 = 0   			     'Me aseguro de que este apagado transmisor
 		tx485 = 0
-        Return
+  Return
 
 '################################################################################
 'RUTINAS DE TRANSMISION PUERTO SERIE HARD
@@ -351,7 +346,8 @@ CheckRX:
             
         IF rcsta.1 = 1 Then         'OverRun del Buffer de Recepcion
 			RCSTA.4=0               'Inicializar Receptor
-			RCSTA.4=1   		    'Inicializar Receptor
+			'pauseus 10
+            RCSTA.4=1   		    'Inicializar Receptor
             Deep = 0
             return
         EndIF
@@ -363,11 +359,69 @@ CheckRX:
 		  Deep = 0
           return                    'por eso lo leo para sacarlo del
         Else                        'Buffer
-          tempRC = RCREG
+          tempRC = RCREG            
         endif                       
+ 
+        select case deep
+        
+        case 0
+            if temprc <> "@" then
+                Deep = 0
+            else
+                pkt[0]="@"
+                Deep = 1
+                For temp = 1 TO 8
+					Pkt[temp] = 0
+ 				Next temp
+ 				CRC2 = 0
+            endif
+            'IF PIR1.5 = 1 then goto CheckRX
+	        return   
+              
+        case 1
+            if temprc <> "1" then
+                Deep = 0
+            else
+                pkt[1]="1"
+                Deep = 2
+            endif
+            'IF PIR1.5 = 1 then goto CheckRX
+	        return
+        case 2
+            if temprc = "F" then
+                GoSub INMEDIATE_TX    'Transmitir a soft PC, posicion, etc, etc
+                Deep = 0
+            else
+                pkt[2]=temprc
+                Deep = 3
+            endif
+            'IF PIR1.5 = 1 then goto CheckRX
+	        return
+        case 3
+        
+        case 4
+        
+        case 5
+        
+        case 6
+        
+        case 7
+        
+        case 8
+        
+        end select
+        
+        IF PIR1.5 = 1 then goto CheckRX
+        return
+ 
+ 
+ 
+ 
+ 
+ 
         
 		IF (tempRC = "@") and (Deep = 0)Then
-				
+				timeoutRX = 0
 				For temp = 1 TO 8
 					Pkt[temp] = 0
  				Next temp
@@ -392,6 +446,19 @@ CheckRX:
 		IF Deep < 8 Then 
 			
 			Pkt[Deep] = tempRC
+			'if deep = 1 then             'Si no es para este motor
+			     if Pkt[0] = "@" and Pkt[1] <> "1" then
+                    Deep = 0
+                    Return
+			     endif
+			'endif
+			if deep = 2 then             'Transmitir a soft PC, posicion, etc, etc
+			     if Pkt[0] = "@" and Pkt[1] = "1" and Pkt[2] = "F" then
+                    Deep = 0
+                    GoSub INMEDIATE_TX
+                    Return
+			     endif
+			endif
 			if deep = 7 then goto ContRX
 			Deep = Deep + 1
             IF pir1.5 = 1 Then      '1 = hay datos en el buffer.
@@ -427,7 +494,7 @@ ContRX:
 	
 		Deep = 0 
 		
-		IF (Pkt[7]= nromotor) or (Pkt[7]= 20) Then		'NUMERO DE MOTOR * 20= brodcast
+		IF (Pkt[7]= nromotor) or (Pkt[7]= 255) Then		'NUMERO DE MOTOR * 255= brodcast
 			
             CRC2 =  Pkt[1] ^ Pkt[2] ^ Pkt[4] ^ Pkt[5] ^ Pkt[6] ^ Pkt[7] 	'CALCULA CRC de RECEPCION
 								
@@ -438,7 +505,7 @@ ContRX:
                 Return
             EndIF
             
-            IF Pkt[1] = "g" Then	     'Transmitir a soft PC limites, posicion, etc, etc
+            IF Pkt[1] = "g" Then	     'Transmitir a soft PC, posicion, etc, etc
                 GoSub INMEDIATE_TX
                 Return
             EndIF
