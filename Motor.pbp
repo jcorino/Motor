@@ -105,7 +105,7 @@ NroMen              CON %10100000
 ToSend              var byte
 
 StatusByte          VAR BYTE    'StatusByte Se transmite siempre
-StatusByte1         VAR BYTE    'StatusByte1 Se transmite siempre
+ConfirmByte         VAR BYTE    'Este Byte se envia como confirmacion de la ultima trama recibida
 StatusByte2         VAR BYTE    'StatusByte2 Se transmite si no tengo que informar limites
 StatusByte3         VAR BYTE    'StatusByte3 Se transmite si no tengo que informar limites
 StatusByte4         var byte    'OJO StatusByte4 se transmite siempre pero no puede ser=255
@@ -181,7 +181,7 @@ Loopp:
         GoSub subEncoder
         GoSub Timer_Sub
     EndIF
-    
+    'GoSub INMEDIATE_TX     'DEBUG
     GoSub CheckRX
     
     GoTo Loopp
@@ -191,7 +191,7 @@ Timer_Sub:
     'if timeoutRX = 1 then      'Si no recibe un byte por 50ms despues que comenzo
     '    Deep = 0               'a recibir una trama, aborta la trama completa
     'endif
-    'timeoutRX = 1
+    'timeoutRX = 1     
     
     IF timeout >= 4 Then   '200ms
         tmpbajar = 0
@@ -284,9 +284,10 @@ INMEDIATE_TX:
             
         endif
         
-            tosend = StatusByte1            'Campo 6
-            CRC = CRC ^ StatusByte1         'StatusByte1 
+            tosend = ConfirmByte            'Campo 6
+            CRC = CRC ^ ConfirmByte         'ConfirmByte 
             GoSub AsciiToHexTX
+            ConfirmByte = 0
             
             tosend = StatusByte             'Campo 7
             GoSub AsciiToHexTX              'StatusByte
@@ -379,7 +380,8 @@ CheckRX:
 	        return   
               
         case 1
-            if temprc <> "1" then
+            'if temprc <> "1" then
+            if temprc =255  then
                 Deep = 0
             else
                 pkt[1]="1"
@@ -392,25 +394,27 @@ CheckRX:
                 GoSub INMEDIATE_TX    'Transmitir a soft PC, posicion, etc, etc
                 Deep = 0
             else
-                pkt[2]=temprc
-                Deep = 3
+                'pkt[2]=temprc
+                'Deep = 3
+                deep=0
             endif
             'IF PIR1.5 = 1 then goto CheckRX
 	        return
         case 3
-        
+            return
         case 4
-        
+            return
         case 5
-        
+            return
         case 6
-        
+            return
         case 7
-        
+            return
         case 8
-        
+            return
         end select
-        
+            return
+            
         IF PIR1.5 = 1 then goto CheckRX
         return
  
