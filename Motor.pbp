@@ -118,7 +118,9 @@ Automatic           VAR StatusByte.3        'Esta en 1 si esta haciendo GoAutoma
 LimSupSup           VAR StatusByte.4        'Si se supero Limite Superior
 LimInfSup           VAR StatusByte.5        'Si se supero Limite Inferior
 
-
+hexRX               var byte
+binRX               var byte
+indiceRXarray       var byte
 temp                VAR BYTE
 tempRC              var byte
 
@@ -143,8 +145,8 @@ minEncoder          VAR WORD
 
 InfLimit            var bit
 antTargetEncoder    var word
-Pkt                 VAR BYTE[9]
-tmpArray            VAR BYTE[8]
+Pkt                 VAR BYTE[20]
+RXArray             VAR BYTE[10]
 
 '#################################################################
 
@@ -347,8 +349,7 @@ CheckRX:
             
         IF rcsta.1 = 1 Then         'OverRun del Buffer de Recepcion
 			RCSTA.4=0               'Inicializar Receptor
-			'pauseus 10
-            RCSTA.4=1   		    'Inicializar Receptor
+			RCSTA.4=1   		    'Inicializar Receptor
             Deep = 0
             return
         EndIF
@@ -362,68 +363,96 @@ CheckRX:
         Else                        'Buffer
           tempRC = RCREG            
         endif                       
- 
-        select case deep
         
-        case 0
+        if deep =0 then
             if temprc <> "@" then
                 Deep = 0
             else
                 pkt[0]="@"
                 Deep = 1
-                For temp = 1 TO 8
+                For temp = 1 TO 19
 					Pkt[temp] = 0
  				Next temp
- 				CRC2 = 0
+ 			endif
+            return   
+        endif 
+             
+        if deep <18 then
+                pkt[deep]=temprc
+                if pkt[deep] = "@" then     'Si llega un "@" es que comenzo otra trama
+                    deep = 1
+                    return
+                endif
+                Deep = deep + 1
+                return
+        endif
+        
+        if deep = 18 then
+            pkt[deep]=temprc
+            if pkt[deep] = "@" then     'Si llega un "@" es que comenzo otra trama
+                deep = 1
+                return
             endif
-            'IF PIR1.5 = 1 then goto CheckRX
-	        return   
-              
-        case 1
-            'if temprc <> "1" then
-            if temprc =255  then
-                Deep = 0
-            else
-                pkt[1]="1"
-                Deep = 2
-            endif
-            'IF PIR1.5 = 1 then goto CheckRX
-	        return
-        case 2
-            if temprc = "F" then
-                GoSub INMEDIATE_TX    'Transmitir a soft PC, posicion, etc, etc
-                Deep = 0
-            else
-                'pkt[2]=temprc
-                'Deep = 3
-                deep=0
-            endif
-            'IF PIR1.5 = 1 then goto CheckRX
-	        return
-        case 3
-            return
-        case 4
-            return
-        case 5
-            return
-        case 6
-            return
-        case 7
-            return
-        case 8
-            return
-        end select
-            return
+                
+            'Termino de recibir trama completa
+            'hay que procesarla, chequear CRC y nroMotor.
+            'Actuar en concecuencia.
             
-        IF PIR1.5 = 1 then goto CheckRX
+            'Genero Array de Bytes RX Bin. Pasando la representacion Hex
+            'que recibo a su equivalente en bytes Binario.
+            RXArray[0] = 64 ' "@"
+            indiceRXarray = 0
+            for temp = 1 to 17 step 2
+                indiceRXarray = indiceRXarray+1
+                hexRX =  pkt[temp]
+                gosub HexToAscii
+                RXArray[indiceRXarray] = binRX <<4
+                hexRX =  pkt[temp+1]
+                gosub HexToAscii
+                RXArray[indiceRXarray] = RXArray[indiceRXarray] | binRX
+            next temp
+            
+            'Calculo CRC
+            CRC2 = 64   '"@"
+            for temp = 1 to 8
+                 CRC2 = CRC2 ^ RXArray[temp]
+            next temp
+            
+            if CRC2 <> RXArray[9] then
+                Deep = 0
+                return
+            endif
+            
+            if RXArray[1]<> nromotor then
+                deep = 0
+                return
+            endif
+            Deep = 0
+            
+            'La trama paso todas las pruebas.
+            'A partir de aca a procesar.
+            
+            if rxarray[2] = 2 then
+                GoSub INMEDIATE_TX
+                return
+            endif
+         
+         endif   
+            
+            
+            
+        
+                
+        'IF PIR1.5 = 1 then goto CheckRX
         return
  
- 
- 
- 
- 
- 
+HexToAscii:
+        lookdown hexRX, ["0123456789ABCDEF"],binRX
+        return
         
+  
+  
+  
 		IF (tempRC = "@") and (Deep = 0)Then
 				timeoutRX = 0
 				For temp = 1 TO 8
