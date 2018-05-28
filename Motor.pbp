@@ -174,6 +174,14 @@ maxEncoder.HIGHBYTE = temp
           
 Encoder = 32000
 
+'DEBUG
+portb.0 = 1
+portb.1 =1
+pause  1000
+portb.0 = 0
+portb.1 =0
+
+
 Loopp:
 
     IF pir1.0 = 1 Then 
@@ -400,6 +408,16 @@ CheckRX:
             
             'Genero Array de Bytes RX Bin. Pasando la representacion Hex
             'que recibo a su equivalente en bytes Binario.
+            'RXArray[0] = 64 "@" Inicio de trama
+            'RXArray[1] = Numero de motor
+            'RXArray[2] = Accion
+            'RXArray[3] = Posicion MSB
+            'RXArray[4] = Posicion LSB
+            'RXArray[5] = TargetPos MSB
+            'RXArray[6] = TargetPos LSB
+            'RXArray[7] = Velocidad
+            'RXArray[8] = Numero de confirmacion - ConfirmByteRX
+            
             RXArray[0] = 64 ' "@"
             indiceRXarray = 0
             for temp = 1 to 17 step 2
@@ -432,10 +450,48 @@ CheckRX:
             'La trama paso todas las pruebas.
             'A partir de aca a procesar.
             
-            if rxarray[2] = 2 then
+            ConfirmByte = rxarray[8]    'Este es el numero que debo enviar para chequear
+                                        'que recibi ok la trama
+            
+            IF rxarray[2] = 1 Then	     'Reset equipo
+                '@ reset
+                Return
+            EndIF
+            
+            IF rxarray[2] = 2 Then	     'Transmitir a soft PC, posicion, etc, etc
                 GoSub INMEDIATE_TX
-                return
-            endif
+                Return
+            EndIF
+               
+            IF rxarray[2] = 3 Then	     'Comando Subir
+                tmpSubir = 1
+                tmpBajar = 0
+                timeout = 0
+                
+                Portb.0=1   'DEBUG
+                Vel = rxarray[7]
+                Return
+            EndIF
+          
+            IF rxarray[2] = 4 Then	     'Comando Bajar
+                tmpSubir = 0
+                tmpBajar = 1
+                timeout = 0
+                
+                portb.1 =1  'DEBUG
+                
+                Vel = rxarray[7]
+                Return  
+            EndIF
+            
+            IF rxarray[2] = 5 Then	     'Comando Stop
+                tmpSubir = 0
+                tmpBajar = 0
+                timeout = 0
+                PORTB.0 = 0
+                PORTB.1 = 0
+                Return
+            EndIF
          
          endif   
             
