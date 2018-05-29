@@ -208,7 +208,7 @@ Timer_Sub:
         tmpbajar = 0
         tmpsubir = 0
         timeout = 0
-        automatic = 0	'########################
+        'automatic = 0	'########################
     Else
         timeout = timeout + 1
     EndIF 
@@ -494,22 +494,24 @@ CheckRX:
             EndIF
                
             IF rxarray[2] = 3 Then	     'Comando Subir
+                gosub inmediate_tx   'DEBUG
+                if Automatic = 1 then return
                 tmpSubir = 1
                 tmpBajar = 0
                 timeout = 0
                 Vel = rxarray[7]
                 inflimit = 0                'Para que en la proxima trama no informe limites.
-                gosub inmediate_tx   'DEBUG
                 Return
             EndIF
           
             IF rxarray[2] = 4 Then	     'Comando Bajar
+                gosub inmediate_tx   'DEBUG
+                if Automatic = 1 then return
                 tmpSubir = 0
                 tmpBajar = 1
                 timeout = 0
                 Vel = rxarray[7]
                 inflimit = 0                'Para que en la proxima trama no informe limites.
-                gosub inmediate_tx   'DEBUG
                 Return  
             EndIF
             
@@ -520,6 +522,7 @@ CheckRX:
                 PORTB.0 = 0
                 PORTB.1 = 0
                 inflimit = 0                'Para que en la proxima trama no informe limites.
+                Automatic = 0
                 gosub inmediate_tx   'DEBUG
                 Return
             EndIF
@@ -540,9 +543,8 @@ CheckRX:
                 targetEncoder.HIGHBYTE = RXArray[3]
                 targetEncoder.lowbyte = RXArray[4]
                 
-                if antTargetEncoder = Targetencoder then return
+                if encoder = Targetencoder then return
                 
-                antTargetEncoder = TargetEncoder
                 'Para que quede en una posicion fija dentro de una ventana.
                 'y no tienda a no encontrar un punto fijo
                 if targetencoder < (encoder + 30) and targetencoder > (encoder - 30) then return
