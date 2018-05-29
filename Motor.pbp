@@ -41,7 +41,6 @@ txsta = $24                 'Enable Asynchronous Serial Transmit
 'spbrg = 64                  '19.2 KBaud @ 20Mhz
 spbrg = 10                  '115.2 KBaud @ 20Mhz
 '--------------------------
-'spbrg = 25                  '19.2 KBaud @ 8Mhz
 'option_reg = $87			'Set timer0 in TimerMode and prescaler 1:128
 t1con = $25                 'Set Timer1 in TimerMode Prescaler 1:4
 intcon.0 = 0
@@ -192,6 +191,8 @@ Loopp:
         GoSub Timer_Sub
     EndIF
     'GoSub INMEDIATE_TX     'DEBUG
+    minEncoder = 0         'DEBUG
+    maxencoder = 65535     'DEBUG
     GoSub CheckRX
     
     GoTo Loopp
@@ -228,7 +229,7 @@ Timer_Sub:
         Ac_Seg = 0
         inflimit = 1
     else
-        Encoder = Encoder + 1 'DEBUG
+        'Encoder = Encoder + 1 'DEBUG
         'gosub INMEDIATE_TX    'DEBUG
         Ac_Seg = Ac_Seg +1
     endif
@@ -450,117 +451,16 @@ CheckRX:
             'La trama paso todas las pruebas.
             'A partir de aca a procesar.
             
-            ConfirmByte = rxarray[8]    'Este es el numero que debo enviar para chequear
-                                        'que recibi ok la trama
-            
-            IF rxarray[2] = 1 Then	     'Reset equipo
-                '@ reset
-                Return
-            EndIF
-            
-            IF rxarray[2] = 2 Then	     'Transmitir a soft PC, posicion, etc, etc
-                GoSub INMEDIATE_TX
-                Return
-            EndIF
-               
-            IF rxarray[2] = 3 Then	     'Comando Subir
-                tmpSubir = 1
-                tmpBajar = 0
-                timeout = 0
-                
-                Portb.0=1   'DEBUG
-                Vel = rxarray[7]
-                Return
-            EndIF
-          
-            IF rxarray[2] = 4 Then	     'Comando Bajar
-                tmpSubir = 0
-                tmpBajar = 1
-                timeout = 0
-                
-                portb.1 =1  'DEBUG
-                
-                Vel = rxarray[7]
-                Return  
-            EndIF
-            
-            IF rxarray[2] = 5 Then	     'Comando Stop
-                tmpSubir = 0
-                tmpBajar = 0
-                timeout = 0
-                PORTB.0 = 0
-                PORTB.1 = 0
-                Return
-            EndIF
-         
-         endif   
-            
-            
-            
-        
-                
-        'IF PIR1.5 = 1 then goto CheckRX
-        return
- 
-HexToAscii:
-        lookdown hexRX, ["0123456789ABCDEF"],binRX
-        return
-        
-  
-  
-  
-		IF (tempRC = "@") and (Deep = 0)Then
-				timeoutRX = 0
-				For temp = 1 TO 8
-					Pkt[temp] = 0
- 				Next temp
- 				Pkt [0] = "@"
-				Deep = 1
-				CRC2 = 0
-                IF PIR1.5 = 1 Then      '1 = hay datos en el buffer.
-                    GoTo CheckRX        
-                    return
-                EndIF
-                Return
-		EndIF
-		
-		IF Deep = 0 Then
-            IF pir1.5 = 1 Then      '1 = hay datos en el buffer.
-                GoTo CheckRX        
-                return
-            EndIF
-            Return
-        EndIF
-		 
-		IF Deep < 8 Then 
-			
-			Pkt[Deep] = tempRC
-			'if deep = 1 then             'Si no es para este motor
-			     if Pkt[0] = "@" and Pkt[1] <> "1" then
-                    Deep = 0
-                    Return
-			     endif
-			'endif
-			if deep = 2 then             'Transmitir a soft PC, posicion, etc, etc
-			     if Pkt[0] = "@" and Pkt[1] = "1" and Pkt[2] = "F" then
-                    Deep = 0
-                    GoSub INMEDIATE_TX
-                    Return
-			     endif
-			endif
-			if deep = 7 then goto ContRX
-			Deep = Deep + 1
-            IF pir1.5 = 1 Then      '1 = hay datos en el buffer.
-                GoTo CheckRX        
-                return
-            EndIF
-            return    							
-		EndIF
-		
-ContRX:
-
-
-
+            'Los posibles valores que puedo recibir en Accion son los
+            'determinados en el enum ComandoMotor (Soft PC):
+            'cReset = 1
+            'cReporte = 2
+            'cSubir = 3
+            'cBajar = 4
+            'cStop = 5
+            'cStopGoAutomatic = 6
+            'cGoAutomatic = 7
+            'cActualizarLimites = 8
 ' "p"       Reset equipo - Utilizada en PICs con reset por soft (18F)
 ' "g"       Transmitir a soft PC limites, posicion, etc, etc - Es la que utilizo para reportar
 ' "a"       Comando Subir
@@ -578,142 +478,132 @@ ContRX:
 ' "l"       Comando Comenzar Grabacion Rutina en EEPROM   - NO UTILIZADA
 ' "q"       Comando Enviar Rutina a PC - NO UTILIZADA
 ' "n"       Comando Finalizar Grabacion o Reproduccion Rutina en EEPROM - NO UTILIZADA
-
-
-	
-		Deep = 0 
-		
-		IF (Pkt[7]= nromotor) or (Pkt[7]= 255) Then		'NUMERO DE MOTOR * 255= brodcast
-			
-            CRC2 =  Pkt[1] ^ Pkt[2] ^ Pkt[4] ^ Pkt[5] ^ Pkt[6] ^ Pkt[7] 	'CALCULA CRC de RECEPCION
-								
-			IF CRC2 <> Pkt[3] Then return
-                        
-            IF Pkt[1] = "p" Then	     'Reset equipo
+       
+                                        
+            ConfirmByte = rxarray[8]    'Este es el numero que debo enviar para chequear
+                                        'que recibi ok la trama
+            
+            IF rxarray[2] = 1 Then	     'Reset equipo
                 '@ reset
                 Return
             EndIF
             
-            IF Pkt[1] = "g" Then	     'Transmitir a soft PC, posicion, etc, etc
+            IF rxarray[2] = 2 Then	     'Transmitir a soft PC, posicion, etc, etc
                 GoSub INMEDIATE_TX
                 Return
             EndIF
                
-            IF Pkt[1] = "a" Then	     'Comando Subir
+            IF rxarray[2] = 3 Then	     'Comando Subir
                 tmpSubir = 1
                 tmpBajar = 0
                 timeout = 0
-                Vel = Pkt[2]
+                Vel = rxarray[7]
+                inflimit = 0                'Para que en la proxima trama no informe limites.
+                gosub inmediate_tx   'DEBUG
                 Return
             EndIF
           
-            IF Pkt[1] = "z" Then	     'Comando Bajar
+            IF rxarray[2] = 4 Then	     'Comando Bajar
                 tmpSubir = 0
                 tmpBajar = 1
                 timeout = 0
-                Vel = Pkt[2]
+                Vel = rxarray[7]
+                inflimit = 0                'Para que en la proxima trama no informe limites.
+                gosub inmediate_tx   'DEBUG
                 Return  
             EndIF
             
-            IF Pkt[1] = "x" Then	     'Comando Stop
+            IF rxarray[2] = 5 Then	     'Comando Stop
                 tmpSubir = 0
                 tmpBajar = 0
                 timeout = 0
                 PORTB.0 = 0
                 PORTB.1 = 0
+                inflimit = 0                'Para que en la proxima trama no informe limites.
+                gosub inmediate_tx   'DEBUG
                 Return
             EndIF
             
-            IF Pkt[1] = "j" Then	     'Detener GoAutomatic
+            'IF rxarray[2] =  Then	     'Detener GoAutomatic
                 ' IMPLEMENTAR CODIGO PARA DETERNER AUTOMATICOS
-                Return
-            EndIF
-  
-            IF Pkt[1] = "k" Then	     'Comando ir a automaticamente
+            '    Return
+            'EndIF
+         
+            IF rxarray[2] = 7 Then	     'Comando ir a automaticamente
+                
+                inflimit = 0                'Para que en la proxima trama no informe limites.
+                gosub inmediate_tx   'DEBUG
                 
                 Automatic = 1
                 'timeout = 0
-                Vel = Pkt[2]
-                targetEncoder.lowbyte = Pkt[5]
-                targetEncoder.HIGHBYTE = Pkt[6]
-                IF Pkt[4] = "1" Then
-                    IF encoder <= targetencoder Then
-                        timeout = 0
-                        Automatic = 0
-                        Mayor = 1
-                        Return
-                    EndIF
+                Vel = rxarray[7]
+                targetEncoder.HIGHBYTE = RXArray[3]
+                targetEncoder.lowbyte = RXArray[4]
+                
+                if antTargetEncoder = Targetencoder then return
+                
+                antTargetEncoder = TargetEncoder
+                'Para que quede en una posicion fija dentro de una ventana.
+                'y no tienda a no encontrar un punto fijo
+                if targetencoder < (encoder + 30) and targetencoder > (encoder - 30) then return
+                    
+                if encoder > targetencoder then
                     Mayor =1
                     tmpSubir = 0
                     tmpBajar = 1
-                EndIF
-                IF Pkt[4] = "2" Then
-                    IF encoder >= targetencoder Then
-                        timeout = 0
-                        Automatic = 0
-                        Mayor = 0
-                        Return
-                    EndIF
+                else
                     Mayor = 0
                     tmpSubir = 1
                     tmpBajar = 0
-                EndIF 
-                
-                '##############################################
-                '### 08/2011 control de DMX para que haga go
-                '### calculando el sentido de giro acorde al
-                '### targetEncoder
-                IF Pkt[4] = "8" Then
-                
-                     if antTargetEncoder = Targetencoder then return
-                     antTargetEncoder = TargetEncoder
-                    'Para que quede en una posicion fija dentro de una ventana.
-                    'y no tienda a no encontrar un punto fijo
-                    if targetencoder < (encoder + 30) and targetencoder > (encoder - 30) then return
-                    
-                    if encoder > targetencoder then
-                        Mayor =1
-                        tmpSubir = 0
-                        tmpBajar = 1
-                    else
-                        Mayor = 0
-                        tmpSubir = 1
-                        tmpBajar = 0
-                    endif
                 endif
                 Return
             EndIF
-            
-            IF Pkt[1] = "s" Then	     'Comando actualizar final de carrera minEncoder
+            return
+         endif   
+        
+            IF rxarray[2] = 8 Then	     'Comando actualizar final de carrera minEncoder
                 
-                minEncoder.lowbyte = Pkt[5]
-                temp = minEncoder.lowbyte
-                write 0, temp
-                pause 5
-                minEncoder.HIGHBYTE = Pkt[6]
-                temp = minEncoder.HIGHBYTE
-                write 1, temp
-                pause 5
-            endif
-            
-            IF Pkt[1] = "d" Then	     'Comando actualizar final de carrera maxEncoder
-                
-                maxEncoder.lowbyte = Pkt[5]
-                temp = maxEncoder.lowbyte
-                write 2, temp
-                pause 5
-                maxEncoder.HIGHBYTE = Pkt[6]
+                maxEncoder.HIGHBYTE = RXArray[3]
                 temp = maxEncoder.HIGHBYTE
                 write 3, temp
                 pause 5
+                
+                maxEncoder.lowbyte = RXArray[4]
+                temp = maxEncoder.lowbyte
+                write 2, temp
+                pause 5
+                
+                minEncoder.HIGHBYTE = RXArray[5]
+                temp = minEncoder.HIGHBYTE
+                write 1, temp
+                pause 5
+                
+                minEncoder.lowbyte = RXArray[6]
+                temp = minEncoder.lowbyte
+                write 0, temp
+                pause 5
+           
             endif
-		EndIF
-        
-		Return       
+		
+                   
+        IF PIR1.5 = 1 then goto CheckRX
+        return
+ 
+ 
+HexToAscii:
+        lookdown hexRX, ["0123456789ABCDEF"],binRX
+        return
 
 subEncoder:
-    'DEBUG
-    return
+    if portb.0 = 1 then         'DEBUG
+        encoder = encoder + 1   'DEBUG
+        return                  'DEBUG
+    endif                       'DEBUG
+    if portb.1 = 1 then         'DEBUG
+        encoder = encoder - 1   'DEBUG
+        return                  'DEBUG
+    endif                       'DEBUG
+    return                      'DEBUG
     
     porta.0 = 1 'Latch encoder
     pauseus 100
