@@ -172,7 +172,8 @@ read 3, temp
 maxEncoder.HIGHBYTE = temp
           
 Encoder = 32000
-
+minEncoder = 0         'DEBUG
+maxencoder = 65535     'DEBUG
 'DEBUG
 portb.0 = 1
 portb.1 =1
@@ -191,8 +192,7 @@ Loopp:
         GoSub Timer_Sub
     EndIF
     'GoSub INMEDIATE_TX     'DEBUG
-    minEncoder = 0         'DEBUG
-    maxencoder = 65535     'DEBUG
+   
     GoSub CheckRX
     
     GoTo Loopp
@@ -559,12 +559,12 @@ CheckRX:
                     tmpBajar = 0
                 endif
                 Return
-            EndIF
-            return
-         endif   
+            endif
+            
         
             IF rxarray[2] = 8 Then	     'Comando actualizar final de carrera minEncoder
                 
+                gosub inmediate_tx   'DEBUG
                 maxEncoder.HIGHBYTE = RXArray[3]
                 temp = maxEncoder.HIGHBYTE
                 write 3, temp
@@ -586,7 +586,10 @@ CheckRX:
                 pause 5
            
             endif
-		
+            return
+		 endif
+		 
+            
                    
         IF PIR1.5 = 1 then goto CheckRX
         return
