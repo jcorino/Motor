@@ -111,6 +111,7 @@ StatusByte4         var byte    'OJO StatusByte4 se transmite siempre pero no pu
                                 'sino el receptor creeria que estoy informando limites
                                 'En rutina TX: si esta en 255 la paso a 254 por precaucion.
                                 
+inPause             var StatusByte.0
 tmpSubir            VAR StatusByte.1
 tmpBajar            VAR StatusByte.2
 Automatic           VAR StatusByte.3        'Esta en 1 si esta haciendo GoAutomatic
@@ -496,17 +497,21 @@ CheckRX:
             IF rxarray[2] = 3 Then	     'Comando Subir
                 gosub inmediate_tx   'DEBUG
                 if Automatic = 1 then return
+                if limsupsup = 1 then return    'si esta superado en limite Sup salgo No tiene sentido seguir
+                                                'y evito cargar tmpSubir en 1 para que no informe que esta en UP.
                 tmpSubir = 1
                 tmpBajar = 0
                 timeout = 0
                 Vel = rxarray[7]
-                inflimit = 0                'Para que en la proxima trama no informe limites.
+                inflimit = 0                    'Para que en la proxima trama no informe limites.
                 Return
             EndIF
           
             IF rxarray[2] = 4 Then	     'Comando Bajar
                 gosub inmediate_tx   'DEBUG
                 if Automatic = 1 then return
+                if liminfsup = 1 then return    'si esta superado en limite Inf salgo No tiene sentido seguir
+                                                'y evito cargar tmpBajar en 1 para que no informe que esta en DWN.
                 tmpSubir = 0
                 tmpBajar = 1
                 timeout = 0
@@ -601,11 +606,11 @@ HexToAscii:
 
 subEncoder:
     if portb.0 = 1 then         'DEBUG
-        encoder = encoder + 1   'DEBUG
+        encoder = encoder + 10   'DEBUG
         return                  'DEBUG
     endif                       'DEBUG
     if portb.1 = 1 then         'DEBUG
-        encoder = encoder - 1   'DEBUG
+        encoder = encoder - 10   'DEBUG
         return                  'DEBUG
     endif                       'DEBUG
     return                      'DEBUG
@@ -662,6 +667,7 @@ CheckLimits:
         'previo chequear los limites de carrera
         '***********************************************
     if porta.3 = 1 then   ' SI ESTA EN PAUSA
+        inpause = 1
         PORTB.1 = 0
         PORTB.0 = 0 
         timeout = 0
@@ -670,6 +676,7 @@ CheckLimits:
         portb.2=0
         return
     endif
+    inpause = 0
     
     if vel = 0 then                 
         portb.4=0                  
