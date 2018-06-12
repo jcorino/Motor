@@ -134,9 +134,12 @@ TXBYTE              VAR BYTE
 Encoder             VAR WORD
 Ac_MS               VAR BYTE
 
-targetEncoder       VAR WORD[5]
-Acces_targetEncoder var targetEncoder.byte0 'Para poder acceder a los Bytes de targetEncoder
-Vel                 VAR BYTE[5]
+targetEncoder       var word 
+GoEncoder           VAR WORD[5]
+Acces_GoEncoder     var GoEncoder.byte0 'Para poder acceder a los Bytes de GoEncoder
+goVel               VAR BYTE[5]
+Vel                 VAR BYTE
+
 RD                  var byte
 WR                  var byte
 
@@ -149,7 +152,6 @@ maxEncoder          VAR WORD
 minEncoder          VAR WORD
 
 InfLimit            var bit
-antTargetEncoder    var word
 Pkt                 VAR BYTE[20]
 RXArray             VAR BYTE[10]
 
@@ -160,7 +162,7 @@ Start:              'Inicio. LLamarla implica Soft-Reset
     Clear           'Inicializar todas las variables a cero
     portb = 0
     tx485 = 0
-    TXSTA.5 = 0   			'Me aseguro de que este apagado transmisor
+    TXSTA.5 = 0   	'Me aseguro de que este apagado transmisor
     
     pir1.0 = 0      'Cargo Timer
     TMR1L = 243
@@ -182,14 +184,8 @@ read 3, temp
 maxEncoder.HIGHBYTE = temp
           
 Encoder = 32000
-minEncoder = 0         'DEBUG
-maxencoder = 65535     'DEBUG
-'DEBUG
-portb.0 = 1
-portb.1 =1
-pause  1000
-portb.0 = 0
-portb.1 =0
+'minEncoder = 0         'DEBUG
+'maxencoder = 65535     'DEBUG
 
 
 Loopp:
@@ -201,8 +197,7 @@ Loopp:
         GoSub subEncoder
         GoSub Timer_Sub
     EndIF
-    'GoSub INMEDIATE_TX     'DEBUG
-   
+    
     GoSub CheckRX
     
     GoTo Loopp
@@ -223,9 +218,7 @@ Timer_Sub:
         timeout = timeout + 1
     EndIF 
     
-    IF Automatic = 1 Then
-        GoSub GoAutomatic
-    EndIF
+    GoSub GoAutomatic
     
     Ac_MS = Ac_MS + 1
     
@@ -239,8 +232,6 @@ Timer_Sub:
         Ac_Seg = 0
         inflimit = 1
     else
-        'Encoder = Encoder + 1 'DEBUG
-        'gosub INMEDIATE_TX    'DEBUG
         Ac_Seg = Ac_Seg +1
     endif
     
@@ -291,21 +282,6 @@ INMEDIATE_TX:
             CRC = CRC ^ StatusByte3         'StatusByte3
             GoSub AsciiToHexTX        
         
-            'Calculo cantidad de rutinas en BufferRutinas
-            if wr > rd then
-                statusbyte2 = wr - rd
-            endif
-            if wr = rd then
-                if full = 1 then
-                    statusbyte2 = 5
-                else
-                    statusbyte2 = 0
-                endif
-            endif
-            if wr < rd then
-                 statusbyte2 = (4 - rd)+wr
-            endif
-            
             tosend = StatusByte2            'Campo 3 
        	    CRC = CRC ^ StatusByte2         'StatusByte2
        	    GoSub AsciiToHexTX
@@ -329,8 +305,8 @@ INMEDIATE_TX:
             GoSub AsciiToHexTX              'StatusByte
             CRC = CRC ^ StatusByte          
             
-            tosend = Vel[rd]                    'Campo 8
-            CRC = CRC ^ Vel[rd]                 'Velocidad
+            tosend = Vel                    'Campo 8
+            CRC = CRC ^ Vel                 'Velocidad
             GoSub AsciiToHexTX
         
             tosend = NroMotor               'Campo 9
@@ -491,19 +467,12 @@ CheckRX:
 ' "a"       Comando Subir
 ' "z"       Comando Bajar
 ' "x"       Comando Stop
-' "j"       Detener GoAutomatic DEBO UTILIZARLA - IMPLEMENTAR CODIGO
+' "j"       Detener GoAutomatic REEMPLAZADA POR STOP QUE LIMPIA BUFFER.
 ' "k"       Comando ir a automaticamente
 ' "s"       Comando actualizar final de carrera minEncoder
 ' "d"       Comando actualizar final de carrera maxEncoder
 
-' "r"       Comando Reproducir Rutina grabada en EEPROM - NO UTILIZADA
-' "b"       Comenzar a Grabar Datos PC a SD - NO UTILIZADA
-' "c"       Comenzar a Grabar de PC a SD - NO UTILIZADA	
-' "r"       Comando Reproducir Rutina grabada en EEPROM - NO UTILIZADA
-' "l"       Comando Comenzar Grabacion Rutina en EEPROM   - NO UTILIZADA
-' "q"       Comando Enviar Rutina a PC - NO UTILIZADA
-' "n"       Comando Finalizar Grabacion o Reproduccion Rutina en EEPROM - NO UTILIZADA
-       
+
             'Este es el numero que debo enviar para chequear
             'que recibi ok la trama                            
             ConfirmByte = rxarray[8]    
@@ -532,7 +501,8 @@ CheckRX:
                 tmpSubir = 1
                 tmpBajar = 0
                 timeout = 0
-                Vel[rd] = rxarray[7]
+                Vel = rxarray[7]
+                
                 'Para que en la proxima trama no informe limites.
                 inflimit = 0                    
                 Return
@@ -548,7 +518,7 @@ CheckRX:
                 tmpSubir = 0
                 tmpBajar = 1
                 timeout = 0
-                Vel[rd] = rxarray[7]
+                Vel = rxarray[7]
                 'Para que en la proxima trama no informe limites.
                 inflimit = 0                
                 Return  
@@ -561,17 +531,22 @@ CheckRX:
                 timeout = 0
                 PORTB.0 = 0
                 PORTB.1 = 0
+                
                 'Para que en la proxima trama no informe limites.
-                inflimit = 0                
+                inflimit = 0
+                                
+                'Limpio BufferRutinas y restablesco todo a cero
+                'lo referido a Automatic
                 Automatic = 0
+                WR = 0
+                rd = 0
+                empty = 1
+                full = 0
+                statusbyte2 = 0
+                
                 gosub inmediate_tx   'DEBUG
                 Return
             EndIF
-            
-            'IF rxarray[2] =  Then	     'Detener GoAutomatic
-                ' IMPLEMENTAR CODIGO PARA DETERNER AUTOMATICOS
-            '    Return
-            'EndIF
             
             'Comando ir a automaticamente
             IF rxarray[2] = 7 Then	     
@@ -614,8 +589,6 @@ CheckRX:
             return
 		 endif
 		 
-            
-                   
         IF PIR1.5 = 1 then goto CheckRX
         return
  
@@ -651,26 +624,32 @@ GoAutomatic:
 
     timeout = 0
     GoSub subEncoder
+    
+    if automatic = 0 then
+        'Si hay mas rutinas en bufferRutinas
+        'la cargo y ejecuto. Sino apaga
+        if Statusbyte2 > 0 then
+        
+            'Llamo para correr puntero RD
+            gosub ReadBufferRutinas
+            
+            if encoder > targetencoder then
+                Mayor =1
+                tmpSubir = 0
+                tmpBajar = 1
+            else
+                Mayor = 0
+                tmpSubir = 1
+                tmpBajar = 0
+            endif
+            automatic = 1
+       endif
+       return
+    endif
 
     IF Mayor = 1 Then
-        IF encoder <= targetencoder[rd] Then
-            'Llamo para correr puntero RD
-            gosub ReadBufferRutinas
-            
-            'Si hay mas rutinas en bufferRutinas
-            'la cargo y ejecuto. Sino apaga
-            if empty = 0 then
-                if encoder > targetencoder[rd] then
-                    Mayor =1
-                    tmpSubir = 0
-                    tmpBajar = 1
-                else
-                    Mayor = 0
-                    tmpSubir = 1
-                    tmpBajar = 0
-                endif
-                return
-            else
+        IF encoder <= targetencoder Then
+           
                 tmpSubir = 0
                 tmpBajar = 0
                 PORTB.0 = 0
@@ -680,27 +659,11 @@ GoAutomatic:
                 portb.4=0
                 portb.3=0
                 portb.2=0
-            endif
+           
         EndIF
     Else
-        IF encoder >= targetencoder[rd] Then
-            'Llamo para correr puntero RD
-            gosub ReadBufferRutinas
+        IF encoder >= targetencoder Then
             
-            'Si hay mas rutinas en bufferRutinas
-            'la cargo y ejecuto. Sino apaga
-            if empty = 0 then
-                if encoder > targetencoder[rd] then
-                    Mayor =1
-                    tmpSubir = 0
-                    tmpBajar = 1
-                else
-                    Mayor = 0
-                    tmpSubir = 1
-                    tmpBajar = 0
-                endif
-                return
-            else
                 tmpSubir = 0
                 tmpBajar = 0
                 PORTB.0 = 0
@@ -710,7 +673,6 @@ GoAutomatic:
                 portb.4=0
                 portb.3=0
                 portb.2=0
-            endif
         EndIF
     EndIF
 
@@ -734,42 +696,42 @@ CheckLimits:
     endif
     inpause = 0
     
-    if Vel[rd] = 0 then                 
+    if Vel = 0 then                 
         portb.4=0                  
         portb.3=0
         portb.2=0
     endif
-    if Vel[rd] = 1 then
+    if Vel = 1 then
         portb.4=0
         portb.3=0
         portb.2=1
     endif
-    if Vel[rd] = 2 then
+    if Vel = 2 then
         portb.4=0
         portb.3=1
         portb.2=0
     endif
-    if Vel[rd] = 3 then
+    if Vel = 3 then
         portb.4=0
         portb.3=1
         portb.2=1
     endif
-    if Vel[rd] = 4 then
+    if Vel = 4 then
         portb.4=1
         portb.3=0
         portb.2=0
     endif
-    if Vel[rd] = 5 then
+    if Vel = 5 then
         portb.4=1
         portb.3=0
         portb.2=1
     endif
-    if Vel[rd] = 6 then
+    if Vel = 6 then
         portb.4=1
         portb.3=1
         portb.2=0
     endif
-    if Vel[rd] >= 7 then
+    if Vel >= 7 then
         portb.4=1
         portb.3=1
         portb.2=1
@@ -804,6 +766,8 @@ ReadBufferRutinas:
     'El buffer es FIFO circular. Lo unico que es correr el 
     'puntero RD para apuntar a targetEncoder y Vel
     
+    targetencoder =GoEncoder[rd]
+    Vel = govel[rd]
     if rd = wr then
         if Empty = 1 then return
     endif
@@ -819,6 +783,21 @@ ReadBufferRutinas:
     else
         full=0
     endif
+    
+    'Calculo cantidad de rutinas en BufferRutinas
+    if wr > rd then
+        statusbyte2 = wr - rd
+    endif
+    if wr = rd then
+        if full = 1 then
+            statusbyte2 = 5
+        else
+            statusbyte2 = 0
+        endif
+    endif
+    if wr < rd then
+        statusbyte2 = (5 - rd)+wr
+    endif
 
 return
 
@@ -832,26 +811,9 @@ WriteBufferRutinas:
         if full = 1 then return
     endif   
 
-    Vel[wr] = rxarray[7]
-    Acces_targetEncoder[(wr*2)+1] = RXArray[3]      'targetencoder.hightbyte
-    Acces_targetEncoder[wr*2] = RXArray[4]          'targetencoder.lowbyte
-    
-    if encoder = Targetencoder[rd] then return
-    
-    'Para que quede en una posicion fija dentro de una ventana.
-    'y no tienda a no encontrar un punto fijo
-    if targetencoder[rd] < (encoder + 30) and targetencoder[rd] > (encoder - 30) then return
-    
-    Automatic = 1
-    if encoder > targetencoder[rd] then
-        Mayor =1
-        tmpSubir = 0
-        tmpBajar = 1
-    else
-        Mayor = 0
-        tmpSubir = 1
-        tmpBajar = 0
-    endif 
+    goVel[wr] = rxarray[7]
+    Acces_GoEncoder[(wr*2)+1] = RXArray[3]      'GoEncoder.hightbyte
+    Acces_GoEncoder[wr*2] = RXArray[4]          'GoEncoder.lowbyte
     
     if wr = 4 then
         wr = 0
@@ -863,6 +825,21 @@ WriteBufferRutinas:
         full = 1
     else
         empty = 0
+    endif
+    
+    'Calculo cantidad de rutinas en BufferRutinas
+    if wr > rd then
+        statusbyte2 = wr - rd
+    endif
+    if wr = rd then
+        if full = 1 then
+            statusbyte2 = 5
+        else
+            statusbyte2 = 0
+        endif
+    endif
+    if wr < rd then
+        statusbyte2 = (5 - rd)+wr
     endif
     
 return
