@@ -139,6 +139,8 @@ GoEncoder           VAR WORD[5]
 Acces_GoEncoder     var GoEncoder.byte0 'Para poder acceder a los Bytes de GoEncoder
 goVel               VAR BYTE[5]
 Vel                 VAR BYTE
+GoPause             var byte[5]
+AutomaticPause      var word
 
 RD                  var byte
 WR                  var byte
@@ -218,6 +220,21 @@ Timer_Sub:
         timeout = timeout + 1
     EndIF 
     
+    'Si estoy en automatic y AutomaticPause es mayor a 50
+    'voy restando de a 50 milisegundos. Cuando esta por debajo
+    'de 50 tengo que ponerlo en 0 y cortar automatic ya
+    'que termino la pausa.
+    if automatic = 1 then
+        if AutomaticPause >50 then
+           AutomaticPause = AutomaticPause - 50
+        else
+            if AutomaticPause > 0 then
+                AutomaticPause = 0
+                automatic = 0
+            endif
+        endif
+    endif
+     
     GoSub GoAutomatic
     
     Ac_MS = Ac_MS + 1
@@ -459,7 +476,7 @@ CheckRX:
             'cSubir = 3
             'cBajar = 4
             'cStop = 5
-            'cStopGoAutomatic = 6
+            'cPauseGoAutomatic = 6
             'cGoAutomatic = 7
             'cActualizarLimites = 8
 ' "p"       Reset equipo - Utilizada en PICs con reset por soft (18F)
@@ -538,6 +555,7 @@ CheckRX:
                 'Limpio BufferRutinas y restablesco todo a cero
                 'lo referido a Automatic
                 Automatic = 0
+                automaticpause = 0
                 WR = 0
                 rd = 0
                 empty = 1
@@ -547,6 +565,21 @@ CheckRX:
                 gosub inmediate_tx   'DEBUG
                 Return
             EndIF
+            
+            'Comando PausaGoAutomatic
+            IF rxarray[2] = 6 Then	     
+                'Para que en la proxima trama no informe limites.
+                inflimit = 0  
+                
+                'Voy a escribit targetEncoder y Vel en Buffer
+                gosub writebufferrutinas  
+                
+                gosub inmediate_tx   'DEBUG
+                
+                Return
+            endif
+            
+            
             
             'Comando ir a automaticamente
             IF rxarray[2] = 7 Then	     
@@ -625,6 +658,17 @@ GoAutomatic:
     timeout = 0
     GoSub subEncoder
     
+    'Si esta ejecutando una GoPausa
+    if AutomaticPause > 0 then
+        tmpSubir = 0
+        tmpBajar = 0
+        PORTB.0 = 0
+        PORTB.1 = 0
+        timeout = 0
+        vel = 0
+        return
+    endif
+    
     if automatic = 0 then
         'Si hay mas rutinas en bufferRutinas
         'la cargo y ejecuto. Sino apaga
@@ -656,9 +700,7 @@ GoAutomatic:
                 PORTB.1 = 0
                 timeout = 0
                 automatic = 0
-                portb.4=0
-                portb.3=0
-                portb.2=0
+                vel = 0
            
         EndIF
     Else
@@ -670,9 +712,7 @@ GoAutomatic:
                 PORTB.1 = 0
                 timeout = 0
                 automatic = 0
-                portb.4=0
-                portb.3=0
-                portb.2=0
+                vel = 0
         EndIF
     EndIF
 
@@ -762,12 +802,22 @@ return
    
 ReadBufferRutinas:
 
-    'Esta rutina se encarga de leer en el Buffer de rutinas
-    'El buffer es FIFO circular. Lo unico que es correr el 
-    'puntero RD para apuntar a targetEncoder y Vel
+    'Esta rutina se encarga de leer en el Buffer
+    'de rutinas. El buffer es FIFO circular. Correr el 
+    'puntero RD para apuntar a targetEncoder, Vel y
+    'de corresponder cargo el valor de pausa si el nivel
+    'debuffer este corresponde a una pausa
     
-    targetencoder =GoEncoder[rd]
+    targetencoder = GoEncoder[rd]
     Vel = govel[rd]
+    'Si este nivel de Buffer es una pausa cargo variable con
+    'el valor de pausa correspondiente
+    if gopause[RD] = 1 then
+        AutomaticPause = GoEncoder[rd]
+    else
+        AutomaticPause = 0
+    endif 
+    
     if rd = wr then
         if Empty = 1 then return
     endif
@@ -805,7 +855,7 @@ WriteBufferRutinas:
 
     timeout = 0
     'Esta rutina se encarga de agregar en el Buffer de rutinas
-    'El buffer es FIFO circular.
+    'y mover el puntero de escritura. El buffer es FIFO circular.
 
     if rd = wr then
         if full = 1 then return
@@ -814,6 +864,15 @@ WriteBufferRutinas:
     goVel[wr] = rxarray[7]
     Acces_GoEncoder[(wr*2)+1] = RXArray[3]      'GoEncoder.hightbyte
     Acces_GoEncoder[wr*2] = RXArray[4]          'GoEncoder.lowbyte
+    
+    'Si el comando es GoPause, cargo el flag en array GoPause
+    'para que pueda identificar GoAutomatic que este nivel de
+    'Buffer es una pausa y no un movimiento.
+    if rxarray[2] = 6 then
+        gopause[wr] = 1
+    else
+        gopause[wr] = 0
+    endif
     
     if wr = 4 then
         wr = 0
