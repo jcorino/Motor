@@ -185,7 +185,7 @@ maxEncoder.lowBYTE = temp
 read 3, temp
 maxEncoder.HIGHBYTE = temp
           
-Encoder = 32000
+Encoder = 5000
 'minEncoder = 0         'DEBUG
 'maxencoder = 65535     'DEBUG
 
@@ -631,15 +631,15 @@ HexToAscii:
         return
 
 subEncoder:
-    if portb.0 = 1 then         'DEBUG
-        encoder = encoder + 10   'DEBUG
-        return                  'DEBUG
-    endif                       'DEBUG
-    if portb.1 = 1 then         'DEBUG
-        encoder = encoder - 10   'DEBUG
-        return                  'DEBUG
-    endif                       'DEBUG
-    return                      'DEBUG
+    'if portb.0 = 1 then         'DEBUG
+    '    encoder = encoder + 10   'DEBUG
+    '    return                  'DEBUG
+    'endif                       'DEBUG
+    'if portb.1 = 1 then         'DEBUG
+    '    encoder = encoder - 10   'DEBUG
+    '    return                  'DEBUG
+    'endif                       'DEBUG
+    'return                      'DEBUG
     
     porta.0 = 1 'Latch encoder
     pauseus 100
