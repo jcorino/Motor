@@ -111,7 +111,7 @@ StatusByte4         var byte    'OJO StatusByte4 se transmite siempre pero no pu
                                 'sino el receptor creeria que estoy informando limites
                                 'En rutina TX: si esta en 255 la paso a 254 por precaucion.
                                 
-inPause             var StatusByte.0        '
+inPause             var StatusByte.0        
 tmpSubir            VAR StatusByte.1
 tmpBajar            VAR StatusByte.2
 Automatic           VAR StatusByte.3        'Esta en 1 si esta haciendo GoAutomatic.
@@ -344,7 +344,7 @@ INMEDIATE_TX:
 		tx485 = 0
   Return
 
-'################################################################################
+'###############################################################################
 'RUTINAS DE TRANSMISION PUERTO SERIE HARD
 'SI QUIERO ENVIAR EL ASCII EQUIVALENTE AL HEXA TENGO QUE 
 'CARGAR ToSend CON CON EL BYTE A ENVIAR Y LLAMAR A AsciiToHexTX:
