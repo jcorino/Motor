@@ -63,14 +63,8 @@ TRISA.5 = 0                 'PIN 7 - Salida general 1.
 TRISE.0 = 0                 'PIN 8 - Salida general 2.
 TRISE.1 = 0                 'PIN 9 - Salida general 3. 
 
-'TRISB.0 = 0                 'PIN 33 - Salida Boton Subir.
-'TRISB.1 = 0                 'PIN 34 - Salida Boton Bajar.
-'TRISB.2 = 0                 'PIN 35 - Salida Selector vel 1.
-'TRISB.3 = 0                 'PIN 36 - Salida Selector vel 2.
-'TRISB.4 = 0                 'PIN 37 - Salida Selector vel 3.
-
-trisb = 0
-portb = 0
+TRISB = 0
+PORTB = 0
 
 TRISC.1 = 0                 'PIN 16 - Salida control TX RS485.
 
@@ -88,8 +82,29 @@ TRISD.6 = 1                 'PIN 29 - Entrada encoder 6.
 TRISD.7 = 1                 'PIN 30 - Entrada encoder 7.
 
 '#################################################################
-'Subir               VAR PORTB.0
-'Bajar               VAR PORTB.1
+'TRISB.0 = 0                 'PIN 33 - Salida Boton Subir.
+'TRISB.1 = 0                 'PIN 34 - Salida Boton Bajar.
+'TRISB.2 = 0                 'PIN 35 - Salida Selector vel 1.
+'TRISB.3 = 0                 'PIN 36 - Salida Selector vel 2.
+'TRISB.4 = 0                 'PIN 37 - Salida Selector vel 3.
+
+'#################################################################
+'PLACA 6 RELAY
+pSubir              VAR PORTB.5
+pBajar              VAR PORTB.0
+pVel1               var PORTB.1
+pVel2               var PORTB.2
+pVel3               var PORTB.3
+'#################################################################
+
+'#################################################################
+'PLACA 5 RELAY
+'pSubir              VAR PORTB.0
+'pBajar              VAR PORTB.1
+'pVel1               var PORTB.2
+'pVel2               var PORTB.3
+'pVel3               var PORTB.4
+'#################################################################
 
 DPIN                VAR PORTC.4         'I2C data pin
 CPIN                VAR PORTC.3         'I2C clock pin
@@ -98,7 +113,9 @@ tx485               var PORTC.1         'Control TX RS485.
 
 '#################################################################
 
-NroMotor            CON 1
+'NroMotor            CON 1
+NroMotor            var byte
+
 NroMen              CON %10100000
 
 ToSend              var byte
@@ -184,6 +201,10 @@ read 2, temp
 maxEncoder.lowBYTE = temp
 read 3, temp
 maxEncoder.HIGHBYTE = temp
+
+'Define numero de motor se lee de posicion 5 de la EEPROM
+'es decir en EEPROM 4
+read 4, Nromotor
           
 Encoder = 5000
 'minEncoder = 0         'DEBUG
@@ -546,8 +567,8 @@ CheckRX:
                 tmpSubir = 0
                 tmpBajar = 0
                 timeout = 0
-                PORTB.0 = 0
-                PORTB.1 = 0
+                pSubir = 0
+                pBajar = 0
                 
                 'Para que en la proxima trama no informe limites.
                 inflimit = 0
@@ -662,8 +683,8 @@ GoAutomatic:
     if AutomaticPause > 0 then
         tmpSubir = 0
         tmpBajar = 0
-        PORTB.0 = 0
-        PORTB.1 = 0
+        pSubir = 0
+        pBajar = 0
         timeout = 0
         vel = 0
         return
@@ -696,8 +717,8 @@ GoAutomatic:
            
                 tmpSubir = 0
                 tmpBajar = 0
-                PORTB.0 = 0
-                PORTB.1 = 0
+                pSubir = 0
+                pBajar = 0
                 timeout = 0
                 automatic = 0
                 vel = 0
@@ -708,8 +729,8 @@ GoAutomatic:
             
                 tmpSubir = 0
                 tmpBajar = 0
-                PORTB.0 = 0
-                PORTB.1 = 0
+                pSubir = 0
+                pBajar = 0
                 timeout = 0
                 automatic = 0
                 vel = 0
@@ -726,76 +747,76 @@ CheckLimits:
         '***********************************************
     if porta.3 = 1 then   ' SI ESTA EN PAUSA
         inpause = 1
-        PORTB.1 = 0
-        PORTB.0 = 0 
+        pBajar = 0
+        pSubir = 0 
         timeout = 0
-        portb.4=0         'ACA Baja velocidad a 0 cuando esta en pausa
-        portb.3=0                  
-        portb.2=0
+        pVel3=0         'ACA Baja velocidad a 0 cuando esta en pausa
+        pVel2=0                  
+        pVel1=0
         return
     endif
     inpause = 0
     
     if Vel = 0 then                 
-        portb.4=0                  
-        portb.3=0
-        portb.2=0
+        pVel3=0                  
+        pVel2=0
+        pVel1=0
     endif
     if Vel = 1 then
-        portb.4=0
-        portb.3=0
-        portb.2=1
+        pVel3=0
+        pVel2=0
+        pVel1=1
     endif
     if Vel = 2 then
-        portb.4=0
-        portb.3=1
-        portb.2=0
+        pVel3=0
+        pVel2=1
+        pVel1=0
     endif
     if Vel = 3 then
-        portb.4=0
-        portb.3=1
-        portb.2=1
+        pVel3=0
+        pVel2=1
+        pVel1=1
     endif
     if Vel = 4 then
-        portb.4=1
-        portb.3=0
-        portb.2=0
+        pVel3=1
+        pVel2=0
+        pVel1=0
     endif
     if Vel = 5 then
-        portb.4=1
-        portb.3=0
-        portb.2=1
+        pVel3=1
+        pVel2=0
+        pVel1=1
     endif
     if Vel = 6 then
-        portb.4=1
-        portb.3=1
-        portb.2=0
+        pVel3=1
+        pVel2=1
+        pVel1=0
     endif
     if Vel >= 7 then
-        portb.4=1
-        portb.3=1
-        portb.2=1
+        pVel3=1
+        pVel2=1
+        pVel1=1
     endif
     
     
     
         if encoder >= maxEncoder then
-            PORTB.0 = 0
+            pSubir = 0
             tmpSubir = 0
             'automatic = 0	'########################
             LimSupSup = 1
         else
             LimSupSup = 0
-            portb.0 = tmpsubir
+            pSubir = tmpsubir
         endif            
         if encoder =< minEncoder then
-            PORTB.1 = 0
+            pBajar = 0
             tmpbajar = 0
             'automatic = 0	'########################
             liminfsup = 1
         else
             liminfsup = 0
-            portb.1 = tmpbajar
+            pBajar = tmpbajar
         endif
 return
    
